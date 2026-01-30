@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     chromium \
     openssl \
     procps \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Puppeteer environment variables to use installed chromium

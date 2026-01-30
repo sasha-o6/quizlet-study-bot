@@ -384,12 +384,15 @@ export class QuizletSyncService {
 
                 // Use new scrapeSet
                 const result = await this.scrapeSet(setUrl, userId, folder.id);
-                if (result.success && result.count) {
-                    totalWords += result.count;
-                    setsScraped++;
+                if (result.success) {
+                    if (result.count) {
+                        totalWords += result.count;
+                        setsScraped++;
+                    }
                 } else {
                     failedCount++;
-                    console.error(`Failed to scrape set ${setUrl}: ${result.error}`);
+                    const errorMsg = 'error' in result ? result.error : "Unknown error";
+                    console.error(`Failed to scrape set ${setUrl}: ${errorMsg}`);
                 }
                 // Rate limit
                 await this.wait(1000, 3000);
@@ -470,8 +473,8 @@ export class QuizletSyncService {
             }
         }
 
-        console.log('API method failed.');
-        return { success: false, error: 'All scrape methods failed' };
+        console.log('API method failed. Attempting Fallback: Headful Puppeteer (XVFB)...');
+        return await this.scrapeSetViaHeadfulPuppeteer(url, userId, folderId);
 
         // 2. Fallback to Browser Scraping (Cookies/DOM)
         // if (!this.browser) await this.init();
@@ -563,6 +566,115 @@ export class QuizletSyncService {
         // } finally {
         //   await page.close();
         // }
+    }
+    async scrapeSetViaHeadfulPuppeteer(url: string, userId: number, folderId?: number) {
+        let browser: Browser | null = null;
+        try {
+            const args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
+                '--window-size=1280,1024',
+                // '--start-maximized'
+            ];
+
+            if (process.env.PROXY_URL) {
+                args.push(`--proxy-server=${process.env.PROXY_URL}`);
+            }
+
+            // Launch HEADFUL browser (requires xvfb in Docker)
+            browser = await puppeteer.launch({
+                headless: false,
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+                args,
+                defaultViewport: null
+            });
+
+            const page = await browser.newPage();
+            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+
+            await this.loadCookies(page);
+
+            console.log(`[Headful] Navigating to set ${url}...`);
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.wait(3000, 6000);
+
+            let pageTitle = await page.title();
+            let content = await page.content();
+
+            // Check for Cloudflare / Login Wall
+            if (pageTitle.includes('Just a moment') || pageTitle.includes('Access denied') || content.includes('Verify you are human')) {
+                console.log('[Headful] Cloudflare/Bot detection triggered. Attempting to solve...');
+                await this.solveCloudflare(page);
+                await this.wait(5000, 10000);
+
+                // Re-check
+                pageTitle = await page.title();
+                content = await page.content();
+                if (pageTitle.includes('Just a moment') || content.includes('Verify you are human')) {
+                    return { success: false, error: 'Could not bypass Cloudflare even with Headful browser.' };
+                }
+            }
+
+            // Attempt JSON scrape
+            let words = await this.extractFromNextData(page);
+
+            // Fallback DOM scrape
+            if (!words || words.length === 0) {
+                console.log('[Headful] JSON extraction failed. Falling back to DOM...');
+                await this.autoScroll(page);
+                await this.wait(2000, 4000);
+                words = await page.evaluate(() => {
+                    const termList = document.querySelector('[data-testid="terms-list"]');
+                    if (!termList) return [];
+                    const textElements = termList.querySelectorAll('.TermText');
+                    const extracted: { term: string; definition: string }[] = [];
+                    for (let i = 0; i < textElements.length; i += 2) {
+                        const termEl = textElements[i] as HTMLElement;
+                        const defEl = textElements[i + 1] as HTMLElement;
+                        if (termEl && defEl) {
+                            extracted.push({ term: termEl.innerText.trim(), definition: defEl.innerText.trim() });
+                        }
+                    }
+                    return extracted;
+                });
+            }
+
+            const title = await page.evaluate(() => document.querySelector('h1')?.innerText || 'Unknown Set');
+            console.log(`Found ${words ? words.length : 0} words in set "${title}".`);
+
+            if (words && words.length > 0) {
+                const setId = this.getSetIdFromUrl(url);
+                const uniqueId = setId || url;
+
+                await prisma.$transaction(async (tx) => {
+                    const set = await tx.set.upsert({
+                        where: { quizletId: uniqueId },
+                        update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
+                        create: { quizletId: uniqueId, title, url, userId, folderId }
+                    });
+
+                    for (const word of words!) {
+                        await tx.word.upsert({
+                            where: { setId_term: { setId: set.id, term: word.term } },
+                            update: { definition: word.definition },
+                            create: { term: word.term, definition: word.definition, setId: set.id }
+                        });
+                    }
+                });
+                return { success: true, count: words.length, title };
+            }
+
+            return { success: false, error: 'No words found in Headful mode.' };
+
+        } catch (e: any) {
+            console.error('[Headful] Scrape failed:', e);
+            return { success: false, error: `Headful scrape failed: ${e.message}` };
+        } finally {
+            if (browser) await browser.close();
+        }
     }
 }
 

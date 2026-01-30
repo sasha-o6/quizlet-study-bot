@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "npx prisma db push --accept-data-loss && node dist/index.js",
+    "start": "xvfb-run --auto-servernum --server-args=\"-screen 0 1280x1024x24\" sh -c \"npx prisma db push --accept-data-loss && node dist/index.js\"",
     "dev": "ts-node src/index.ts",
     "migrate:deploy": "prisma migrate deploy",
     "generate": "prisma generate"

@@ -45,37 +45,47 @@ bot.command('sync', async (ctx) => {
     return ctx.reply('Please provide a Quizlet URL: /sync https://quizlet.com/...');
   }
 
-  ctx.reply('⏳ Starting sync... This might take a minute.');
+  // Reply immediately to acknowledge command
+  await ctx.reply('⏳ Starting sync... This might take a minute.');
 
-  try {
-    // Find internal user ID
-    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
-    if (!user) return ctx.reply('User not found. Run /start first.');
+  // Process in background so other users/commands are not blocked
+  (async () => {
+    try {
+      // Find internal user ID
+      const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+      if (!user) {
+        return ctx.reply('User not found. Run /start first.');
+      }
 
-    if (url.includes('/folders/')) {
-      ctx.reply('📂 Detecting Folder... This may take a while to sync all sets.');
-      const result = await quizletService.scrapeFolder(url, user.id);
-      if (result.success) {
-        let msg = `✅ Folder Sync Complete! Added ${result.setsCount} sets with ${result.totalWords} total words.`;
-        if (result.failedCount && result.failedCount > 0) {
-          msg += `\n⚠️ Failed to download ${result.failedCount} sets.`;
+      if (url.includes('/folders/')) {
+        await ctx.reply('📂 Detecting Folder... This may take a while to sync all sets.');
+        const result = await quizletService.scrapeFolder(url, user.id);
+        if (result.success) {
+          let msg = `✅ Folder Sync Complete! Added ${result.setsCount} sets with ${result.totalWords} total words.`;
+          if (result.failedCount && result.failedCount > 0) {
+            msg += `\n⚠️ Failed to download ${result.failedCount} sets.`;
+          }
+          await ctx.reply(msg);
+        } else {
+          await ctx.reply(`❌ Failed to sync folder: ${result.error}`);
         }
-        ctx.reply(msg);
       } else {
-        ctx.reply(`❌ Failed to sync folder: ${result.error}`);
+        const result = await quizletService.scrapeSet(url, user.id);
+        if (result.success) {
+          let msg = `✅ Success! Added ${result.count} words from "${result.title}".`;
+          const message = (result as any).message;
+          if (message) msg += ` (${message})`;
+          await ctx.reply(msg);
+        } else {
+          const errorMsg = 'error' in result ? result.error : "Unknown error";
+          await ctx.reply(`❌ Failed to sync: ${errorMsg}`);
+        }
       }
-    } else {
-      const result = await quizletService.scrapeSet(url, user.id);
-      if (result.success) {
-        ctx.reply(`✅ Success! Added ${result.count} words from "${result.title}".`);
-      } else {
-        ctx.reply(`❌ Failed to sync: ${result.error}`);
-      }
+    } catch (e) {
+      console.error(e);
+      await ctx.reply('An unexpected error occurred during sync.');
     }
-  } catch (e) {
-    console.error(e);
-    ctx.reply('An unexpected error occurred during sync.');
-  }
+  })();
 });
 
 bot.command('status', async (ctx) => {
