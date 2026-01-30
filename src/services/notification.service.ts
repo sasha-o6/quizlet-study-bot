@@ -6,7 +6,7 @@ export class NotificationService {
   private job: CronJob | null = null;
   private bot: Bot<Context> | null = null;
 
-  constructor() {}
+  constructor() { }
 
   init(bot: Bot<Context>) {
     this.bot = bot;
@@ -33,11 +33,11 @@ export class NotificationService {
         // 1. Quiet Hours Check
         let inQuietHours = false;
         if (user.quietStartHour > user.quietEndHour) {
-             // Spans midnight (e.g. 23 to 7)
-             if (currentHour >= user.quietStartHour || currentHour < user.quietEndHour) inQuietHours = true;
+          // Spans midnight (e.g. 23 to 7)
+          if (currentHour >= user.quietStartHour || currentHour < user.quietEndHour) inQuietHours = true;
         } else {
-             // Standard day (e.g. 1 to 5) - rare but possible
-             if (currentHour >= user.quietStartHour && currentHour < user.quietEndHour) inQuietHours = true;
+          // Standard day (e.g. 1 to 5) - rare but possible
+          if (currentHour >= user.quietStartHour && currentHour < user.quietEndHour) inQuietHours = true;
         }
 
         if (inQuietHours) continue;
@@ -47,7 +47,7 @@ export class NotificationService {
         const intervalMs = user.notificationInterval * 60 * 1000;
 
         if (timeSinceLast >= intervalMs) {
-            await this.sendBatch(user);
+          await this.sendBatch(user);
         }
       }
 
@@ -58,7 +58,7 @@ export class NotificationService {
 
   async sendBatch(user: any) {
     if (!this.bot) return;
-    
+
     // Flatten all words available for the user
     const allWords = user.sets.flatMap((s: any) => s.words);
     if (allWords.length === 0) return;
@@ -70,13 +70,13 @@ export class NotificationService {
 
     // Safety loop to prevent infinite loop if batchSize > total words
     const limit = Math.min(batchSize, allWords.length);
-    
+
     while (selectedWords.length < limit) {
-        const idx = Math.floor(Math.random() * allWords.length);
-        if (!usedIndices.has(idx)) {
-            usedIndices.add(idx);
-            selectedWords.push(allWords[idx]);
-        }
+      const idx = Math.floor(Math.random() * allWords.length);
+      if (!usedIndices.has(idx)) {
+        usedIndices.add(idx);
+        selectedWords.push(allWords[idx]);
+      }
     }
 
     if (selectedWords.length === 0) return;
@@ -85,21 +85,21 @@ export class NotificationService {
     let message = '';
     // `🎯 **Time to learn!**\n\n`;
     selectedWords.forEach(w => {
-        message += `*${w.term}* - _${w.definition}_\n\n`;
+      message += `*${w.term}* - _${w.definition}_\n`;
     });
 
     try {
-        await this.bot.api.sendMessage(Number(user.telegramId), message, { parse_mode: 'Markdown' });
-        
-        // Update last notification time
-        await prisma.user.update({
-            where: { id: user.id },
-            data: { lastNotification: new Date() }
-        });
-        
+      await this.bot.api.sendMessage(Number(user.telegramId), message, { parse_mode: 'Markdown' });
+
+      // Update last notification time
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastNotification: new Date() }
+      });
+
     } catch (e) {
-        console.error(`Failed to send message to ${user.telegramId}:`, e);
-        // If user blocked bot, maybe deactivate user? For now just log.
+      console.error(`Failed to send message to ${user.telegramId}:`, e);
+      // If user blocked bot, maybe deactivate user? For now just log.
     }
   }
 }
