@@ -406,8 +406,37 @@ export class QuizletSyncService {
     }
 
     async scrapeSet(url: string, userId: number, folderId?: number) {
-        // 1. Try API via Browser Context
+        // 1. Initial Duplicate Check (by ID or URL)
         const setId = this.getSetIdFromUrl(url);
+
+        if (setId) {
+            // Check if set already exists in DB by ID or strict URL
+            const existingSet = await prisma.set.findFirst({
+                where: {
+                    OR: [
+                        { quizletId: setId },
+                        { quizletId: url }
+                    ]
+                }
+            });
+
+            if (existingSet) {
+                console.log(`Set ${setId} (or URL) already exists in DB. Skipping scrape.`);
+
+                // If we are part of a folder sync, ensure the link exists
+                if (folderId && !existingSet.folderId) {
+                    await prisma.set.update({
+                        where: { id: existingSet.id },
+                        data: { folderId }
+                    });
+                    console.log(`Linked existing set ${existingSet.id} to folder ${folderId}`);
+                }
+
+                return { success: true, count: 0, title: existingSet.title, message: 'Already exists' };
+            }
+        }
+
+        // 2. Try API via Browser Context
         if (setId) {
             console.log(`Extracted Set ID: ${setId}. Attempting Hybrid Browser-API scrape...`);
             const apiResult = await this.scrapeSetViaPuppeteerApi(setId);
@@ -418,10 +447,13 @@ export class QuizletSyncService {
                 const title = `Quizlet Set ${setId}`;
 
                 await prisma.$transaction(async (tx) => {
+                    // Prefer using the numeric ID as the unique identifier if possible
+                    const uniqueId = setId || url;
+
                     const set = await tx.set.upsert({
-                        where: { quizletId: url },
+                        where: { quizletId: uniqueId },
                         update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
-                        create: { quizletId: url, title, url, userId, folderId }
+                        create: { quizletId: uniqueId, title, url, userId, folderId }
                     });
 
                     for (const word of apiResult.terms) {
