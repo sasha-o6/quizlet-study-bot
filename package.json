@@ -1,0 +1,31 @@
+{
+  "name": "quizlet-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for learning vocabulary from Quizlet",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npx prisma db push --accept-data-loss && node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "migrate:deploy": "prisma migrate deploy",
+    "generate": "prisma generate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.10.2",
+    "dotenv": "^16.4.5",
+    "grammy": "^1.21.1",
+    "puppeteer": "^22.4.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "cron": "^3.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "prisma": "^5.10.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

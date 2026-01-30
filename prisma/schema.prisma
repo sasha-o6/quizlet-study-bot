@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int      @id @default(autoincrement())
+  telegramId          BigInt   @unique
+  isActive            Boolean  @default(true)
+  notificationInterval Int     @default(60) // in minutes
+  wordsPerBatch       Int      @default(5)
+  quietStartHour      Int      @default(23)
+  quietEndHour        Int      @default(7)
+  lastNotification    DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  folders     Folder[]
+  sets        Set[]
+  reviews     WordReview[]
+}
+
+model Folder {
+  id        Int      @id @default(autoincrement())
+  quizletId String   @unique
+  name      String
+  url       String
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  sets      Set[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Set {
+  id        Int      @id @default(autoincrement())
+  quizletId String   @unique
+  title     String
+  url       String
+  folderId  Int?
+  folder    Folder?  @relation(fields: [folderId], references: [id])
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  words     Word[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Word {
+  id          Int          @id @default(autoincrement())
+  term        String
+  definition  String
+  setId       Int
+  set         Set          @relation(fields: [setId], references: [id])
+  reviews     WordReview[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([setId, term])
+}
+
+model WordReview {
+  id        Int      @id @default(autoincrement())
+  wordId    Int
+  word      Word     @relation(fields: [wordId], references: [id])
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  correctCount Int   @default(0)
+  incorrectCount Int @default(0)
+  lastReviewed DateTime @default(now())
+  nextReview   DateTime @default(now())
+
+  @@unique([userId, wordId])
+}
