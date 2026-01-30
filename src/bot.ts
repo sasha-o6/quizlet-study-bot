@@ -52,12 +52,21 @@ bot.command('sync', async (ctx) => {
      const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) }});
      if (!user) return ctx.reply('User not found. Run /start first.');
 
-     const result = await quizletService.scrapeSet(url, user.id);
-     
-     if (result.success) {
-        ctx.reply(`✅ Success! Added ${result.count} words from "${result.title}".`);
+     if (url.includes('/folders/')) {
+         ctx.reply('📂 Detecting Folder... This may take a while to sync all sets.');
+         const result = await quizletService.scrapeFolder(url, user.id);
+         if (result.success) {
+             ctx.reply(`✅ Folder Sync Complete! Added ${result.setsCount} sets with ${result.totalWords} total words.`);
+         } else {
+             ctx.reply(`❌ Failed to sync folder: ${result.error}`);
+         }
      } else {
-        ctx.reply(`❌ Failed to sync: ${result.error}`);
+         const result = await quizletService.scrapeSet(url, user.id);
+         if (result.success) {
+            ctx.reply(`✅ Success! Added ${result.count} words from "${result.title}".`);
+         } else {
+            ctx.reply(`❌ Failed to sync: ${result.error}`);
+         }
      }
   } catch (e) {
     console.error(e);
