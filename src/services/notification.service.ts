@@ -82,9 +82,10 @@ export class NotificationService {
     if (selectedWords.length === 0) return;
 
     // Construct Message
-    let message = `🎯 **Time to learn!**\n\n`;
+    let message = '';
+    // `🎯 **Time to learn!**\n\n`;
     selectedWords.forEach(w => {
-        message += `🔹 *${w.term}*\n   _${w.definition}_\n\n`;
+        message += `*${w.term}* - _${w.definition}_\n\n`;
     });
 
     try {
