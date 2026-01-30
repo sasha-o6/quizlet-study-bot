@@ -370,6 +370,7 @@ export class QuizletSyncService {
 
             let totalWords = 0;
             let setsScraped = 0;
+            let failedCount = 0;
 
             for (const setUrl of setUrls) {
                 const existingSet = await prisma.set.findUnique({ where: { quizletId: setUrl } });
@@ -386,12 +387,15 @@ export class QuizletSyncService {
                 if (result.success && result.count) {
                     totalWords += result.count;
                     setsScraped++;
+                } else {
+                    failedCount++;
+                    console.error(`Failed to scrape set ${setUrl}: ${result.error}`);
                 }
                 // Rate limit
                 await this.wait(1000, 3000);
             }
 
-            return { success: true, setsCount: setsScraped, totalWords };
+            return { success: true, setsCount: setsScraped, totalWords, failedCount };
 
         } catch (error) {
             console.error('Error scraping folder:', error);
