@@ -37,7 +37,7 @@ bot.command('start', async (ctx) => {
   }
 });
 
-bot.command('sync', async (ctx) => {
+bot.command('add', async (ctx) => {
   const url = ctx.match;
   const userId = ctx.from?.id;
   if (!userId) return;
