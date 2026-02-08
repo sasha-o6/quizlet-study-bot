@@ -30,7 +30,7 @@ bot.command('start', async (ctx) => {
       update: { isActive: true },
       create: { telegramId: BigInt(userId) }
     });
-    ctx.reply('Welcome! I will help you learn vocabulary. \n\nUse /sync [url] to add a Quizlet set.\nUse /settings to configure intervals.');
+    ctx.reply('Welcome! I will help you learn vocabulary. \n\nUse /add [url] to add a Quizlet set.\nUse /settings to configure intervals.');
   } catch (e) {
     console.error(e);
     ctx.reply('Error starting bot.');
@@ -42,7 +42,7 @@ bot.command('add', async (ctx) => {
   const userId = ctx.from?.id;
   if (!userId) return;
   if (!url) {
-    return ctx.reply('Please provide a Quizlet URL: /sync https://quizlet.com/...');
+    return ctx.reply('Please provide a Quizlet URL: /add https://quizlet.com/...');
   }
 
   // Reply immediately to acknowledge command
