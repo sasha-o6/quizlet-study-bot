@@ -88,7 +88,7 @@ bot.command('add', async (ctx) => {
   })();
 });
 
-bot.command('status', async (ctx) => {
+bot.command('progress', async (ctx) => {
   const userId = ctx.from?.id;
   if (!userId) return;
 
@@ -102,7 +102,7 @@ bot.command('status', async (ctx) => {
   const totalWords = user.sets.reduce((acc, s) => acc + s._count.words, 0);
   const totalSets = user.sets.length;
 
-  let msg = `📊 *Status*\n`;
+  let msg = `📊 *Progres status*\n`;
   msg += `Set Count: ${totalSets}\n`;
   msg += `Total Words: ${totalWords}\n`;
   msg += `Active: ${user.isActive ? 'Yes' : 'No'}\n`;
