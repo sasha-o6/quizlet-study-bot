@@ -1,16 +1,10 @@
 FROM node:20-slim
 
-# Install system dependencies (including chromium for ARM64)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    chromium \
     openssl \
     procps \
-    xvfb \
     && rm -rf /var/lib/apt/lists/*
-
-# Set Puppeteer environment variables to use installed chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 

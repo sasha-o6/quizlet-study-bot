@@ -1,14 +1,8 @@
-import fs from 'fs/promises';
-import path from 'path';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { prisma } from './prisma.service';
-import { Browser } from 'puppeteer';
-
-puppeteer.use(StealthPlugin());
+import { flareSolverrService } from './flaresolverr.service';
+import * as cheerio from 'cheerio';
 
 export class QuizletSyncService {
-    private browser: Browser | null = null;
 
     // Helper for random delays
     private async wait(min: number, max: number) {
@@ -16,345 +10,22 @@ export class QuizletSyncService {
         return new Promise(resolve => setTimeout(resolve, time));
     }
 
-    async init() {
-        const args = [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-blink-features=AutomationControlled', // Critical for stealth
-            '--window-size=1920,1080'
-        ];
-
-        if (process.env.PROXY_URL) {
-            console.log(`[Proxy] Using proxy: ${process.env.PROXY_URL}`);
-            args.push(`--proxy-server=${process.env.PROXY_URL}`);
-        }
-
-        this.browser = await puppeteer.launch({
-            headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-            args
-        });
-    }
-
-    async autoScroll(page: any) {
-        await page.evaluate(async () => {
-            await new Promise<void>((resolve) => {
-                let totalHeight = 0;
-                const distance = 100;
-                const timer = setInterval(() => {
-                    const scrollHeight = document.body.scrollHeight;
-                    window.scrollBy(0, distance);
-                    totalHeight += distance;
-
-                    if (totalHeight >= scrollHeight - window.innerHeight) {
-                        clearInterval(timer);
-                        resolve();
-                    }
-                }, 100);
-            });
-        });
-    }
-
-    // New Helper: Extract data from Next.js hydration data
-    async extractFromNextData(page: any) {
-        return page.evaluate(() => {
-            try {
-                const nextData = document.querySelector('script[id="__NEXT_DATA__"]');
-                if (!nextData) return null;
-
-                const json = JSON.parse(nextData.innerHTML);
-
-                let terms = null;
-
-                const findKey = (obj: any, key: string): any => {
-                    if (!obj || typeof obj !== 'object') return null;
-                    if (key in obj) return obj[key];
-                    for (const k in obj) {
-                        const result = findKey(obj[k], key);
-                        if (result) return result;
-                    }
-                    return null;
-                };
-
-                const setModel = findKey(json, 'studySet');
-                if (setModel && setModel.studiableItems) {
-                    terms = setModel.studiableItems;
-                } else if (findKey(json, 'studiableItems')) {
-                    terms = findKey(json, 'studiableItems');
-                }
-
-                if (!terms || !Array.isArray(terms)) return null;
-
-                return terms.map((t: any) => ({
-                    term: t.cardSides?.[0]?.media?.[0]?.plainText || t.word || '',
-                    definition: t.cardSides?.[1]?.media?.[0]?.plainText || t.definition || ''
-                })).filter((t: any) => t.term && t.definition);
-
-            } catch (e) {
-                return null;
-            }
-        });
-    }
-
-    async loadCookies(page: any) {
-        try {
-            const cookiePath = path.resolve(process.cwd(), 'cookies.json');
-            const cookiesExist = await fs.access(cookiePath).then(() => true).catch(() => false);
-
-            if (cookiesExist) {
-                const cookiesString = await fs.readFile(cookiePath, 'utf8');
-                const rawCookies = JSON.parse(cookiesString);
-
-                if (Array.isArray(rawCookies)) {
-                    // Sanitize cookies for Puppeteer
-                    const validCookies = rawCookies.map((c: any) => {
-                        const cookie: any = {
-                            name: c.name,
-                            value: c.value,
-                            domain: c.domain,
-                            path: c.path || '/',
-                            secure: c.secure,
-                            httpOnly: c.httpOnly,
-                        };
-
-                        if (c.expirationDate) cookie.expires = c.expirationDate;
-
-                        // Fix sameSite
-                        if (c.sameSite === 'no_restriction' || c.sameSite === 'None') cookie.sameSite = 'None';
-                        else if (c.sameSite === 'lax' || c.sameSite === 'Lax') cookie.sameSite = 'Lax';
-                        else if (c.sameSite === 'strict' || c.sameSite === 'Strict') cookie.sameSite = 'Strict';
-                        // If key is null or unknown, don't include it (Puppeteer protocol expects string or undefined)
-
-                        return cookie;
-                    });
-
-                    await page.setCookie(...validCookies);
-                    console.log(`[Cookies] Loaded ${validCookies.length} sanitized cookies from cookies.json`);
-                }
-            }
-        } catch (error) {
-            console.error('Error loading cookies:', error);
-        }
-    }
-
-    async solveCloudflare(page: any) {
-        try {
-            console.log('Attempting to solve Cloudflare challenge...');
-            await page.waitForSelector('#turnstile-wrapper iframe', { timeout: 3000 }).catch(() => null);
-
-            // Try clicking shadow dom or iframe
-            const frames = page.frames();
-            for (const frame of frames) {
-                try {
-                    const button = await frame.$('.ctp-checkbox-label');
-                    if (button) {
-                        console.log('Found cloudflare checkbox, clicking...');
-                        await button.click();
-                        await this.wait(2000, 5000);
-                        return;
-                    }
-                } catch (e) { }
-            }
-
-            // Fallback verify link
-            const verifyLink = await page.$('a[href*="verify"]');
-            if (verifyLink) await verifyLink.click();
-
-        } catch (e) {
-            console.log('Automated solving failed or not applicable');
-        }
-    }
-
     getSetIdFromUrl(url: string): string | null {
         const match = url.match(/quizlet\.com\/(?:[a-z]{2}\/)?(\d+)/);
         return match ? match[1] : null;
     }
 
-    // Helper to build Cookie header from cookies.json
-    async getCookieHeader(): Promise<string> {
-        try {
-            const cookiePath = path.resolve(process.cwd(), 'cookies.json');
-            const data = await fs.readFile(cookiePath, 'utf8');
-            const cookies = JSON.parse(data);
-            if (!Array.isArray(cookies)) return '';
-
-            return cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-        } catch (e) {
-            console.error('Failed to load cookies for API:', e);
-            return '';
-        }
-    }
-
-    /*
-    async scrapeSetViaApi(setId: string) {
-        if (!this.browser) await this.init();
-        const page = await this.browser!.newPage();
-        try {
-            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
-            const apiUrl = `https://quizlet.com/webapi/3.4/studiable-item-documents?filters%5BstudiableContainerId%5D=${setId}&filters%5BstudiableContainerType%5D=1&perPage=1000&page=1`;
-            console.log(`[API] Fetching JSON from ${apiUrl}...`);
-
-            await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-            // Check if we got JSON in body
-            const data = await page.evaluate(() => {
-                try {
-                    return JSON.parse(document.body.innerText);
-                } catch { return null; }
-            });
-
-            if (data && data.responses && data.responses[0] && data.responses[0].models) {
-                const terms = data.responses[0].models.studiableItem.map((item: any) => ({
-                    term: item.cardSides[0].media[0].plainText,
-                    definition: item.cardSides[1].media[0].plainText
-                }));
-                return { success: true, count: terms.length, terms };
-            }
-
-            return { success: false, error: 'Invalid API response structure' };
-
-        } catch (error) {
-            console.error('[API] Scrape failed:', error);
-            return { success: false, error: 'API Request Failed' };
-        } finally {
-            await page.close();
-        }
-    }
-    */
-
-    // Hybrid Method: Use Puppeteer to execute the API request (Bypasses TLS blocking)
-    async scrapeSetViaPuppeteerApi(setId: string) {
-        if (!this.browser) await this.init();
-        const page = await this.browser!.newPage();
-
-        try {
-            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
-            // Go to base domain to set origin/cookies context
-            console.log('[Puppeteer-API] Initializing browser context...');
-            await page.goto('https://quizlet.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-            const apiUrl = `https://quizlet.com/webapi/3.4/studiable-item-documents?filters%5BstudiableContainerId%5D=${setId}&filters%5BstudiableContainerType%5D=1&perPage=1000&page=1`;
-            console.log(`[Puppeteer-API] Fetching JSON from ${apiUrl}...`);
-
-            // Execute fetch INSIDE the browser
-            const responseData = await page.evaluate(async (url) => {
-                try {
-                    const res = await fetch(url, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest' // Mimic internal call
-                        }
-                    });
-
-                    if (!res.ok) return { success: false, status: res.status, text: await res.text() };
-                    return { success: true, data: await res.json() };
-                } catch (e: any) {
-                    return { success: false, error: e.toString() };
-                }
-            }, apiUrl);
-
-            if (!responseData.success) {
-                console.error(`[Puppeteer-API] Fetch failed: ${responseData.status} - ${responseData.text?.substring(0, 100)}`);
-                return { success: false, error: `Browser Fetch Failed: ${responseData.status}` };
-            }
-
-            const data = responseData.data;
-
-            if (data && data.responses && data.responses[0] && data.responses[0].models) {
-                const terms = data.responses[0].models.studiableItem.map((item: any) => ({
-                    term: item.cardSides[0].media[0].plainText,
-                    definition: item.cardSides[1].media[0].plainText
-                }));
-                return { success: true, count: terms.length, terms };
-            }
-
-            return { success: false, error: 'Invalid API response structure' };
-
-        } catch (error) {
-            console.error('[Puppeteer-API] Execution failed:', error);
-            return { success: false, error: 'Browser API Request Failed' };
-        } finally {
-            await page.close();
-        }
-    }
-
     async scrapeFolder(url: string, userId: number) {
-        // Folder scraping usually requires the page to get the list of set IDs.
-        // We will keep Puppeteer for Folder scraping for now as it's more complex to reverse engineer.
-        if (!this.browser) await this.init();
-        const page = await this.browser!.newPage();
-
         try {
-            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-            await page.setViewport({ width: 1920, height: 1080 });
-            await page.setExtraHTTPHeaders({
-                'Accept-Language': 'en-US,en;q=0.9',
-            });
-            // await this.loadCookies(page); // User disabled cookies
-
-            console.log(`Navigating to folder ${url}...`);
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-            // await this.wait(2000, 5000); 
-
-            // Debug: Check title
-            const pageTitle = await page.title();
-            console.log(`Page Title: "${pageTitle}"`);
-
-            // Attempt JSON extraction for Folder Sets
-            const nextDataSets = await page.evaluate(() => {
-                try {
-                    const script = document.querySelector('script[id="__NEXT_DATA__"]');
-                    if (!script) return null;
-                    const json = JSON.parse(script.innerHTML);
-
-                    const sets: string[] = [];
-                    const findUrl = (obj: any) => {
-                        if (!obj) return;
-                        if (typeof obj === 'object') {
-                            if (obj.url && typeof obj.url === 'string' && obj.url.includes('/flash-cards/')) {
-                                sets.push("https://quizlet.com" + obj.url);
-                            }
-                            Object.values(obj).forEach(findUrl);
-                        }
-                    };
-                    findUrl(json);
-                    return [...new Set(sets)];
-                } catch { return null; }
-            });
-
-            let setUrls: string[] = [];
-
-            if (nextDataSets && nextDataSets.length > 0) {
-                console.log(`[JSON] Found ${nextDataSets.length} sets from data.`);
-                setUrls = nextDataSets;
-            } else {
-                // Fallback to DOM
-                await this.autoScroll(page);
-                await this.wait(1000, 3000);
-                setUrls = await page.evaluate(() => {
-                    const cards = document.querySelectorAll('[data-testid="content-list-item-card"]');
-                    const urls: string[] = [];
-                    cards.forEach(card => {
-                        const link = card.querySelector('a');
-                        if (link && link.href) {
-                            urls.push(link.href);
-                        }
-                    });
-                    return urls;
-                });
-            }
+            console.log(`[Quizlet] Scraping folder: ${url}`);
+            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const $ = cheerio.load(html);
 
             // Extract Folder Name
-            const folderName = await page.evaluate(() => {
-                return document.querySelector('h1')?.innerText || 'Unknown Folder';
-            });
+            const folderName = $('h1').first().text().trim() || 'Unknown Folder';
+            console.log(`[Quizlet] Folder Name: ${folderName}`);
 
-            // Upsert Folder in DB
+            // Upsert Folder
             const folder = await prisma.folder.upsert({
                 where: { quizletId: url },
                 update: { name: folderName, updatedAt: new Date() },
@@ -366,23 +37,91 @@ export class QuizletSyncService {
                 }
             });
 
-            console.log(`Found ${setUrls.length} sets in folder "${folderName}".`);
+            // Extract Set URLs
+            // Strategy: Look for Next.js data or links
+            let setUrls: string[] = [];
+
+            // 1. Try Next.js Data
+            const nextDataScript = $('#__NEXT_DATA__').html();
+            if (nextDataScript) {
+                try {
+                    const json = JSON.parse(nextDataScript);
+                    const findUrl = (obj: any) => {
+                        if (!obj) return;
+                        if (typeof obj === 'object') {
+                            if (obj.url && typeof obj.url === 'string' && obj.url.includes('/flash-cards/')) {
+                                setUrls.push("https://quizlet.com" + obj.url);
+                            }
+                            // Also check for `webUrl` which sometimes appears
+                            if (obj.webUrl && typeof obj.webUrl === 'string' && obj.webUrl.includes('/flash-cards/')) {
+                                setUrls.push(obj.webUrl);
+                            }
+                            Object.values(obj).forEach(findUrl);
+                        }
+                    };
+                    findUrl(json);
+                } catch (e) {
+                    console.error('Error parsing Next.js data for folder:', e);
+                }
+            }
+
+            // 1.5. Check for Redux/Page Data in window
+            // Sometimes data is in window.Quizlet or similar, but Cheerio sees static HTML.
+            // If FlareSolverr evaluates JS, maybe we can get more. 
+            // For now, let's stick to advanced selectors.
+
+
+            // 2. Fallback to extracting links
+            if (setUrls.length === 0) {
+                // Try multiple selector patterns
+                // User reported: [data-testid="content-list-item-card"]
+                const selectors = [
+                    '[data-testid="content-list-item-card"] a',
+                    '.SetPreviewCard-header a',
+                    'a[href*="/flash-cards/"]',
+                    'a[href*="/learn/"]'
+                ];
+
+                selectors.forEach(sel => {
+                    $(sel).each((_: number, el: any) => {
+                        const href = $(el).attr('href');
+                        if (href && (href.includes('/flash-cards/') || /\/\d+\//.test(href))) {
+                            setUrls.push(href.startsWith('http') ? href : `https://quizlet.com${href}`);
+                        }
+                    });
+                });
+            }
+
+            setUrls = [...new Set(setUrls)];
+            console.log(`[Quizlet] Found ${setUrls.length} sets in folder.`);
+
+            if (setUrls.length === 0) {
+                console.log('[Debug] No sets found. HTML preview:');
+                console.log(html.substring(0, 500));
+                console.log('...HTML end...');
+                // Try to save to file for inspection if running locally
+                try {
+                    require('fs').writeFileSync('debug_folder.html', html);
+                    console.log('[Debug] Saved debug_folder.html');
+                } catch (e) { }
+            }
+
+            setUrls = [...new Set(setUrls)];
+            console.log(`[Quizlet] Found ${setUrls.length} sets in folder.`);
 
             let totalWords = 0;
             let setsScraped = 0;
             let failedCount = 0;
 
             for (const setUrl of setUrls) {
+                // Check if set exists
                 const existingSet = await prisma.set.findUnique({ where: { quizletId: setUrl } });
                 if (existingSet) {
-                    console.log(`Set ${setUrl} already exists. Skipping.`);
+                    console.log(`[Quizlet] Set ${setUrl} already exists. Skipping.`);
                     continue;
                 }
 
-                // Small pause between sets to assume user usage
-                await this.wait(3000, 7000);
-
-                // Use new scrapeSet
+                // Scrape Set
                 const result = await this.scrapeSet(setUrl, userId, folder.id);
                 if (result.success) {
                     if (result.count) {
@@ -392,28 +131,26 @@ export class QuizletSyncService {
                 } else {
                     failedCount++;
                     const errorMsg = 'error' in result ? result.error : "Unknown error";
-                    console.error(`Failed to scrape set ${setUrl}: ${errorMsg}`);
+                    console.error(`[Quizlet] Failed to scrape set ${setUrl}: ${errorMsg}`);
                 }
-                // Rate limit
+
                 await this.wait(1000, 3000);
             }
 
             return { success: true, setsCount: setsScraped, totalWords, failedCount };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error scraping folder:', error);
-            return { success: false, error: `Failed to scrape folder` };
-        } finally {
-            await page.close();
+            return { success: false, error: `Failed to scrape folder: ${error.message}` };
         }
     }
 
     async scrapeSet(url: string, userId: number, folderId?: number) {
-        // 1. Initial Duplicate Check (by ID or URL)
-        const setId = this.getSetIdFromUrl(url);
+        console.log(`[Quizlet] Scraping set: ${url}`);
 
+        // 1. Initial Duplicate Check
+        const setId = this.getSetIdFromUrl(url);
         if (setId) {
-            // Check if set already exists in DB by ID or strict URL
             const existingSet = await prisma.set.findFirst({
                 where: {
                     OR: [
@@ -424,256 +161,106 @@ export class QuizletSyncService {
             });
 
             if (existingSet) {
-                console.log(`Set ${setId} (or URL) already exists in DB. Skipping scrape.`);
-
-                // If we are part of a folder sync, ensure the link exists
+                console.log(`[Quizlet] Set ${setId} already exists in DB.`);
                 if (folderId && !existingSet.folderId) {
                     await prisma.set.update({
                         where: { id: existingSet.id },
                         data: { folderId }
                     });
-                    console.log(`Linked existing set ${existingSet.id} to folder ${folderId}`);
                 }
-
                 return { success: true, count: 0, title: existingSet.title, message: 'Already exists' };
             }
         }
 
-        // 2. Try API via Browser Context
-        if (setId) {
-            console.log(`Extracted Set ID: ${setId}. Attempting Hybrid Browser-API scrape...`);
-            const apiResult = await this.scrapeSetViaPuppeteerApi(setId);
-
-            if (apiResult.success && apiResult.terms && apiResult.terms.length > 0) {
-                console.log(`[Browser-API] Successfully fetched ${apiResult.count} words.`);
-
-                const title = `Quizlet Set ${setId}`;
-
-                await prisma.$transaction(async (tx) => {
-                    // Prefer using the numeric ID as the unique identifier if possible
-                    const uniqueId = setId || url;
-
-                    const set = await tx.set.upsert({
-                        where: { quizletId: uniqueId },
-                        update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
-                        create: { quizletId: uniqueId, title, url, userId, folderId }
-                    });
-
-                    for (const word of apiResult.terms) {
-                        await tx.word.upsert({
-                            where: { setId_term: { setId: set.id, term: word.term } },
-                            update: { definition: word.definition },
-                            create: { term: word.term, definition: word.definition, setId: set.id }
-                        });
-                    }
-                });
-                return { success: true, count: apiResult.count, title };
-            } else {
-                console.log(`[Browser-API] Failed: ${apiResult.error}`);
-            }
-        }
-
-        console.log('API method failed. Attempting Fallback: Headful Puppeteer (XVFB)...');
-        return await this.scrapeSetViaHeadfulPuppeteer(url, userId, folderId);
-
-        // 2. Fallback to Browser Scraping (Cookies/DOM)
-        // if (!this.browser) await this.init();
-        // const page = await this.browser!.newPage();
-
-        // try {
-        //   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-        //   await page.setViewport({ width: 1920, height: 1080 });
-        //   await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-
-        //   await this.loadCookies(page);
-
-        //   console.log(`Navigating to set ${url}...`);
-        //   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        //   await this.wait(3000, 6000);
-
-        //   let pageTitle = await page.title();
-        //   console.log(`Page Title: "${pageTitle}"`);
-
-        //   let content = await page.content();
-        //   if (pageTitle.includes('Just a moment') || pageTitle.includes('Access denied') || 
-        //       content.includes('Press & Hold to confirm you are a human') || content.includes('Verify you are human')) {
-
-        //        console.error('Bot detected by Cloudflare. Attempting to solve...');
-        //        await this.solveCloudflare(page);
-        //        await this.wait(5000, 10000); 
-
-        //        pageTitle = await page.title();
-        //        content = await page.content();
-        //        if (pageTitle.includes('Just a moment') || pageTitle.includes('Access denied') || content.includes('Press & Hold')) {
-        //            return { success: false, error: 'Cloudflare blocked access. Please add valid cookies.json.' };
-        //        }
-        //   }
-
-        //   // JSON Extraction from Next.js (Preferred)
-        //   let words = await this.extractFromNextData(page);
-
-        //   // Fallback to DOM
-        //   if (!words || words.length === 0) {
-        //       console.log('[JSON] Extraction failed. Falling back to DOM...');
-        //       await this.autoScroll(page);
-        //       await this.wait(2000, 4000);
-        //       words = await page.evaluate(() => {
-        //         const termList = document.querySelector('[data-testid="terms-list"]');
-        //         if (!termList) return [];
-        //         const textElements = termList.querySelectorAll('.TermText');
-        //         const extracted: { term: string; definition: string }[] = [];
-        //         for (let i = 0; i < textElements.length; i += 2) {
-        //             const termEl = textElements[i] as HTMLElement;
-        //             const defEl = textElements[i+1] as HTMLElement;
-        //             if (termEl && defEl) {
-        //                 extracted.push({ term: termEl.innerText.trim(), definition: defEl.innerText.trim() });
-        //             }
-        //         }
-        //         return extracted;
-        //       });
-        //   }
-
-        //   const title = await page.evaluate(() => document.querySelector('h1')?.innerText || 'Unknown Set');
-        //   console.log(`Found ${words ? words.length : 0} words in set "${title}".`);
-
-        //   if (words && words.length > 0) {
-        //     await prisma.$transaction(async (tx) => {
-        //         const set = await tx.set.upsert({
-        //             where: { quizletId: url },
-        //             update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
-        //             create: { quizletId: url, title, url, userId, folderId }
-        //         });
-
-        //         for (const word of words) {
-        //             await tx.word.upsert({
-        //                 where: { setId_term: { setId: set.id, term: word.term } },
-        //                 update: { definition: word.definition },
-        //                 create: { term: word.term, definition: word.definition, setId: set.id }
-        //             });
-        //         }
-        //     });
-        //     return { success: true, count: words.length, title };
-        //   } else {
-        //      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        //      const filename = `debug_set_${timestamp}.html`;
-        //      await fs.writeFile(path.resolve(process.cwd(), filename), await page.content());
-        //      return { success: false, error: `No words found. HTML saved to ${filename}` };
-        //   }
-
-        // } catch (error) {
-        //   console.error('Error scraping set:', error);
-        //   return { success: false, error: 'Failed to scrape set' };
-        // } finally {
-        //   await page.close();
-        // }
-    }
-    async scrapeSetViaHeadfulPuppeteer(url: string, userId: number, folderId?: number) {
-        let browser: Browser | null = null;
         try {
-            const args = [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-blink-features=AutomationControlled',
-                '--window-size=1280,1024',
-                // '--start-maximized'
-            ];
+            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const $ = cheerio.load(html);
 
-            if (process.env.PROXY_URL) {
-                args.push(`--proxy-server=${process.env.PROXY_URL}`);
-            }
+            // Extract terms
+            let terms: { term: string, definition: string }[] = [];
 
-            // Launch HEADFUL browser (requires xvfb in Docker)
-            browser = await puppeteer.launch({
-                headless: false,
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-                args,
-                defaultViewport: null
-            });
+            // 1. Try Next.js Data
+            const nextDataScript = $('#__NEXT_DATA__').html();
+            if (nextDataScript) {
+                try {
+                    const json = JSON.parse(nextDataScript);
 
-            const page = await browser.newPage();
-            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+                    // Recursive finder for studiableItems
+                    const findItems = (obj: any): any[] | null => {
+                        if (!obj || typeof obj !== 'object') return null;
+                        if (Array.isArray(obj.studiableItems) && obj.studiableItems.length > 0) return obj.studiableItems;
+                        for (const k in obj) {
+                            const res = findItems(obj[k]);
+                            if (res) return res;
+                        }
+                        return null;
+                    };
 
-            await this.loadCookies(page);
-
-            console.log(`[Headful] Navigating to set ${url}...`);
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-            await this.wait(3000, 6000);
-
-            let pageTitle = await page.title();
-            let content = await page.content();
-
-            // Check for Cloudflare / Login Wall
-            if (pageTitle.includes('Just a moment') || pageTitle.includes('Access denied') || content.includes('Verify you are human')) {
-                console.log('[Headful] Cloudflare/Bot detection triggered. Attempting to solve...');
-                await this.solveCloudflare(page);
-                await this.wait(5000, 10000);
-
-                // Re-check
-                pageTitle = await page.title();
-                content = await page.content();
-                if (pageTitle.includes('Just a moment') || content.includes('Verify you are human')) {
-                    return { success: false, error: 'Could not bypass Cloudflare even with Headful browser.' };
+                    const items = findItems(json);
+                    if (items) {
+                        terms = items.map((t: any) => ({
+                            term: t.cardSides?.[0]?.media?.[0]?.plainText || t.word || '',
+                            definition: t.cardSides?.[1]?.media?.[0]?.plainText || t.definition || ''
+                        })).filter((t: any) => t.term || t.definition);
+                    }
+                } catch (e) {
+                    console.error('Error parsing Next.js data for set:', e);
                 }
             }
 
-            // Attempt JSON scrape
-            let words = await this.extractFromNextData(page);
-
-            // Fallback DOM scrape
-            if (!words || words.length === 0) {
-                console.log('[Headful] JSON extraction failed. Falling back to DOM...');
-                await this.autoScroll(page);
-                await this.wait(2000, 4000);
-                words = await page.evaluate(() => {
-                    const termList = document.querySelector('[data-testid="terms-list"]');
-                    if (!termList) return [];
-                    const textElements = termList.querySelectorAll('.TermText');
-                    const extracted: { term: string; definition: string }[] = [];
-                    for (let i = 0; i < textElements.length; i += 2) {
-                        const termEl = textElements[i] as HTMLElement;
-                        const defEl = textElements[i + 1] as HTMLElement;
-                        if (termEl && defEl) {
-                            extracted.push({ term: termEl.innerText.trim(), definition: defEl.innerText.trim() });
-                        }
-                    }
-                    return extracted;
+            // 2. Fallback DOM
+            if (terms.length === 0) {
+                console.log('[Quizlet] JSON extraction failed/empty. Trying DOM...');
+                $('.TermText').each((i: number, el: any) => {
+                    // Quizlet DOM structure usually alternates Term/Definition or groups them
+                    // This is a naive selector, assuming parity. 
+                    // Often it's better to find row containers.
+                    // But let's try a robust container selector first.
+                    // Actually, usually it is .SetPageTerm-content .SetPageTerm-side
                 });
+
+                // Better DOM strategy: iterate rows
+                const rows = $('[data-testid="set-page-card-side"]');
+                // Note: Class names are obfuscated, testids are safer if available.
+                // If not, we fall back to TermText parity.
+                const termTexts = $('.TermText');
+                for (let i = 0; i < termTexts.length; i += 2) {
+                    const term = $(termTexts[i]).text().trim();
+                    const def = $(termTexts[i + 1]).text().trim();
+                    if (term || def) {
+                        terms.push({ term, definition: def });
+                    }
+                }
             }
 
-            const title = await page.evaluate(() => document.querySelector('h1')?.innerText || 'Unknown Set');
-            console.log(`Found ${words ? words.length : 0} words in set "${title}".`);
+            const title = $('h1').first().text().trim() || `Quizlet Set ${setId || 'Unknown'}`;
+            console.log(`[Quizlet] Found ${terms.length} terms in "${title}"`);
 
-            if (words && words.length > 0) {
-                const setId = this.getSetIdFromUrl(url);
-                const uniqueId = setId || url;
-
+            if (terms.length > 0) {
                 await prisma.$transaction(async (tx) => {
+                    const uniqueId = setId || url;
                     const set = await tx.set.upsert({
                         where: { quizletId: uniqueId },
                         update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
                         create: { quizletId: uniqueId, title, url, userId, folderId }
                     });
 
-                    for (const word of words!) {
+                    for (const word of terms) {
                         await tx.word.upsert({
-                            where: { setId_term: { setId: set.id, term: word.term } },
+                            where: { setId_term: { setId: set.id, term: word.term } }, // Assumes term uniqueness per set
                             update: { definition: word.definition },
                             create: { term: word.term, definition: word.definition, setId: set.id }
                         });
                     }
                 });
-                return { success: true, count: words.length, title };
+                return { success: true, count: terms.length, title };
             }
 
-            return { success: false, error: 'No words found in Headful mode.' };
+            return { success: false, error: 'No words found.' };
 
-        } catch (e: any) {
-            console.error('[Headful] Scrape failed:', e);
-            return { success: false, error: `Headful scrape failed: ${e.message}` };
-        } finally {
-            if (browser) await browser.close();
+        } catch (error: any) {
+            console.error('Error scraping set:', error);
+            return { success: false, error: `Failed to scrape set: ${error.message}` };
         }
     }
 }
