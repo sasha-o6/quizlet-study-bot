@@ -15,8 +15,18 @@ export class QuizletSyncService {
         return match ? match[1] : null;
     }
 
-    async scrapeFolder(url: string, userId: number) {
+    private generateProgressBar(current: number, total: number, length: number = 10): string {
+        const percent = Math.round((current / total) * 100);
+        const filled = Math.round((current / total) * length);
+        const empty = length - filled;
+        return `${'█'.repeat(filled)}${'░'.repeat(empty)} ${percent}%`;
+        // return `${'▄'.repeat(filled)}${'▁'.repeat(empty)} ${percent}%`;
+    }
+
+    async scrapeFolder(url: string, userId: number, onProgress?: (msg: string) => Promise<void>) {
         try {
+            if (onProgress) await onProgress(`📂 Scraping folder: ${url}`);
+
             console.log(`[Quizlet] Scraping folder: ${url}`);
             const html = await flareSolverrService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
@@ -24,6 +34,8 @@ export class QuizletSyncService {
             // Extract Folder Name
             const folderName = $('h1').first().text().trim() || 'Unknown Folder';
             console.log(`[Quizlet] Folder Name: ${folderName}`);
+
+            if (onProgress) await onProgress(`📂 Folder: ${folderName}\n🔍 Finding sets...`);
 
             // Upsert Folder
             const folder = await prisma.folder.upsert({
@@ -73,10 +85,9 @@ export class QuizletSyncService {
 
             // 2. Fallback to extracting links
             if (setUrls.length === 0) {
-                // Try multiple selector patterns
-                // User reported: [data-testid="content-list-item-card"]
+                // Try multiple selector patterns - updated with user feedback
                 const selectors = [
-                    '[data-testid="content-list-item-card"] a',
+                    '[data-testid="content-list-item-card"] a', // Look for links inside the cards
                     '.SetPreviewCard-header a',
                     'a[href*="/flash-cards/"]',
                     'a[href*="/learn/"]'
@@ -96,6 +107,7 @@ export class QuizletSyncService {
             console.log(`[Quizlet] Found ${setUrls.length} sets in folder.`);
 
             if (setUrls.length === 0) {
+                if (onProgress) await onProgress(`⚠️ Found 0 sets in "${folderName}". Checking debug...`);
                 console.log('[Debug] No sets found. HTML preview:');
                 console.log(html.substring(0, 500));
                 console.log('...HTML end...');
@@ -145,8 +157,9 @@ export class QuizletSyncService {
         }
     }
 
-    async scrapeSet(url: string, userId: number, folderId?: number) {
+    async scrapeSet(url: string, userId: number, folderId?: number, onProgress?: (msg: string) => Promise<void>) {
         console.log(`[Quizlet] Scraping set: ${url}`);
+        if (onProgress) await onProgress(`📘 Connecting to set: ${url}...`);
 
         // 1. Initial Duplicate Check
         const setId = this.getSetIdFromUrl(url);
@@ -173,6 +186,7 @@ export class QuizletSyncService {
         }
 
         try {
+            if (onProgress) await onProgress(`📘 Fetching data...`);
             const html = await flareSolverrService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
 
@@ -211,24 +225,27 @@ export class QuizletSyncService {
             // 2. Fallback DOM
             if (terms.length === 0) {
                 console.log('[Quizlet] JSON extraction failed/empty. Trying DOM...');
-                $('.TermText').each((i: number, el: any) => {
-                    // Quizlet DOM structure usually alternates Term/Definition or groups them
-                    // This is a naive selector, assuming parity. 
-                    // Often it's better to find row containers.
-                    // But let's try a robust container selector first.
-                    // Actually, usually it is .SetPageTerm-content .SetPageTerm-side
-                });
-
                 // Better DOM strategy: iterate rows
-                const rows = $('[data-testid="set-page-card-side"]');
-                // Note: Class names are obfuscated, testids are safer if available.
-                // If not, we fall back to TermText parity.
+                // Look for both test IDs and legacy classes
+                const rows = $('[data-testid="set-page-card-side"], .SetPageTerm-content');
+
+                if (rows.length > 0) {
+                    // The scraping logic for DOM might be specific to structure. 
+                    // Assuming rows contain term and definition.
+                    // The previous logic was a bit weak. Let's try iterating common containers.
+                    // Actually, if we found rows via test-id, we can parse them.
+                    // But let's stick to the previous text() parity logic if rows aren't cleanly paired.
+                }
+
+                // Previous parity logic (improved)
                 const termTexts = $('.TermText');
-                for (let i = 0; i < termTexts.length; i += 2) {
-                    const term = $(termTexts[i]).text().trim();
-                    const def = $(termTexts[i + 1]).text().trim();
-                    if (term || def) {
-                        terms.push({ term, definition: def });
+                if (termTexts.length > 0) {
+                    for (let i = 0; i < termTexts.length; i += 2) {
+                        const term = $(termTexts[i]).text().trim();
+                        const def = $(termTexts[i + 1]).text().trim();
+                        if (term || def) {
+                            terms.push({ term, definition: def });
+                        }
                     }
                 }
             }
@@ -236,23 +253,53 @@ export class QuizletSyncService {
             const title = $('h1').first().text().trim() || `Quizlet Set ${setId || 'Unknown'}`;
             console.log(`[Quizlet] Found ${terms.length} terms in "${title}"`);
 
-            if (terms.length > 0) {
-                await prisma.$transaction(async (tx) => {
-                    const uniqueId = setId || url;
-                    const set = await tx.set.upsert({
-                        where: { quizletId: uniqueId },
-                        update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
-                        create: { quizletId: uniqueId, title, url, userId, folderId }
-                    });
+            if (onProgress) {
+                await onProgress(`📘 **${title}**\nFound ${terms.length} terms. Saving...`);
+            }
 
-                    for (const word of terms) {
-                        await tx.word.upsert({
-                            where: { setId_term: { setId: set.id, term: word.term } }, // Assumes term uniqueness per set
-                            update: { definition: word.definition },
-                            create: { term: word.term, definition: word.definition, setId: set.id }
-                        });
-                    }
+            if (terms.length > 0) {
+                // Upsert Set First
+                await prisma.set.upsert({
+                    where: { quizletId: setId || url },
+                    update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
+                    create: { quizletId: setId || url, title, url, userId, folderId }
                 });
+
+                // Retrieve Set ID for words
+                const set = await prisma.set.findUnique({ where: { quizletId: setId || url } });
+                if (!set) throw new Error("Set not found after upsert");
+
+                let wordsAdded = 0;
+                const totalTerms = terms.length;
+
+                // Initial Progress
+                if (onProgress) {
+                    const bar = this.generateProgressBar(0, totalTerms);
+                    await onProgress(`📘 **${title}**\n${0} / ${totalTerms}\n${bar}`);
+                }
+
+                for (let i = 0; i < totalTerms; i++) {
+                    const word = terms[i];
+
+                    // Update progress every 5 words or so to reduce spam
+                    if (onProgress && (i % 5 === 0 || i === totalTerms - 1)) {
+                        const bar = this.generateProgressBar(i, totalTerms);
+                        await onProgress(`📘 **${title}**\n${i} / ${totalTerms}\n${bar}\nSaving word: "${word.term.slice(0, 15)}"...`);
+                    }
+
+                    await prisma.word.upsert({
+                        where: { setId_term: { setId: set.id, term: word.term } },
+                        update: { definition: word.definition },
+                        create: { term: word.term, definition: word.definition, setId: set.id }
+                    });
+                    wordsAdded++;
+                }
+
+                if (onProgress) {
+                    const bar = this.generateProgressBar(totalTerms, totalTerms);
+                    await onProgress(`📘 **${title}**\n${totalTerms} / ${totalTerms}\n${bar}\n✅ Set Saved!\n\nAdded/Updated: ${wordsAdded}\nTotal Words: ${totalTerms}`);
+                }
+
                 return { success: true, count: terms.length, title };
             }
 
@@ -260,6 +307,7 @@ export class QuizletSyncService {
 
         } catch (error: any) {
             console.error('Error scraping set:', error);
+            if (onProgress) await onProgress(`❌ Error scraping set: ${error.message}`);
             return { success: false, error: `Failed to scrape set: ${error.message}` };
         }
     }

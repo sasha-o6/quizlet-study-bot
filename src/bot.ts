@@ -57,28 +57,49 @@ bot.command('add', async (ctx) => {
         return ctx.reply('User not found. Run /start first.');
       }
 
+      let statusMessage: any;
+      try {
+        statusMessage = await ctx.reply('⏳ Starting sync...');
+      } catch (e) {
+        // Fallback if reply fails?
+      }
+
+      const progressCallback = async (msg: string) => {
+        if (statusMessage) {
+          try {
+            // Avoid rate limits by not updating too often? 
+            // Bot API handles it mostly, but good to be safe.
+            // For now, we update on every call.
+            await ctx.api.editMessageText(ctx.chat!.id, statusMessage.message_id, msg, { parse_mode: 'Markdown' });
+          } catch (e) {
+            // Ignore "message is not modified"
+          }
+        }
+      };
+
       if (url.includes('/folders/')) {
-        await ctx.reply('📂 Detecting Folder... This may take a while to sync all sets.');
-        const result = await quizletService.scrapeFolder(url, user.id);
+        await progressCallback('📂 Detecting Folder...');
+        const result = await quizletService.scrapeFolder(url, user.id, progressCallback);
         if (result.success) {
-          let msg = `✅ Folder Sync Complete! Added ${result.setsCount} sets with ${result.totalWords} total words.`;
+          let msg = `✅ **Folder Sync Complete!**\nAdded ${result.setsCount} sets with ${result.totalWords} total words.`;
           if (result.failedCount && result.failedCount > 0) {
             msg += `\n⚠️ Failed to download ${result.failedCount} sets.`;
           }
-          await ctx.reply(msg);
+          await progressCallback(msg);
         } else {
-          await ctx.reply(`❌ Failed to sync folder: ${result.error}`);
+          await progressCallback(`❌ Failed to sync folder: ${result.error}`);
         }
       } else {
-        const result = await quizletService.scrapeSet(url, user.id);
+        await progressCallback('📘 Connecting to Set...');
+        const result = await quizletService.scrapeSet(url, user.id, undefined, progressCallback);
         if (result.success) {
-          let msg = `✅ Success! Added ${result.count} words from "${result.title}".`;
+          let msg = `✅ **Success!**\nAdded ${result.count} words from "${result.title}".`;
           const message = (result as any).message;
-          if (message) msg += ` (${message})`;
-          await ctx.reply(msg);
+          if (message) msg += `\n(${message})`;
+          await progressCallback(msg);
         } else {
           const errorMsg = 'error' in result ? result.error : "Unknown error";
-          await ctx.reply(`❌ Failed to sync: ${errorMsg}`);
+          await progressCallback(`❌ Failed to sync: ${errorMsg}`);
         }
       }
     } catch (e) {
