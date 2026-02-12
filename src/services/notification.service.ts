@@ -10,8 +10,8 @@ export class NotificationService {
 
   init(bot: Bot<Context>) {
     this.bot = bot;
-    // Run every 5 minutes
-    this.job = new CronJob('*/5 * * * *', () => this.checkAndSend());
+    // Run every 7 minutes
+    this.job = new CronJob('*/7 * * * *', () => this.checkAndSend());
     this.job.start();
     console.log('Notification scheduler started.');
   }
