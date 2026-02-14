@@ -261,5 +261,22 @@ bot.on('callback_query:data', async (ctx) => {
   }
 });
 
+bot.command('study', async (ctx) => {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+
+  const user = await prisma.user.findUnique({
+    where: { telegramId: BigInt(userId) },
+    include: { sets: { include: { words: true } } }
+  });
+
+  if (!user) {
+    return ctx.reply('User not found. Run /start first.');
+  }
+
+  await ctx.reply('Here are some words to study:');
+  await notificationService.sendBatch(user);
+});
+
 // Start scheduler
 notificationService.init(bot);
