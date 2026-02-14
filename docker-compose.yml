@@ -5,7 +5,6 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - BOT_TOKEN=${BOT_TOKEN}
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - NODE_ENV=production
     depends_on:
       - db
@@ -13,17 +12,21 @@ services:
       - ./pg_data:/var/lib/postgresql/data # Ensure database persistence if db volume fails (redundant but safe)
 
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:v3.3.15
+    image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
     environment:
       - LOG_LEVEL=info
       - LOG_HTML=false
       - CAPTCHA_SOLVER=none
-      - TZ=Europe/London
+      - TZ=Europe/Kyiv
       - HOST_chromium_headless=true
     ports:
       - "8191:8191"
     restart: always
+    # Optimizations for Raspberry Pi (ARM64) & Chromium
+    shm_size: '2gb'
+    security_opt:
+      - seccomp:unconfined
 
   db:
     image: postgres:16-alpine
