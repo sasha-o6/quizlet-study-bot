@@ -42,11 +42,9 @@ export class NotificationService {
 
         if (inQuietHours) continue;
 
-        // 2. Interval Check
-        const timeSinceLast = now.getTime() - user.lastNotification.getTime();
-        const intervalMs = user.notificationInterval * 60 * 1000;
-
-        if (timeSinceLast >= intervalMs) {
+        // 2. Schedule Check using nextNotificationTime
+        // If nextNotificationTime is in the past, send notification
+        if (now >= user.nextNotificationTime) {
           await this.sendBatch(user);
         }
       }
@@ -115,10 +113,24 @@ export class NotificationService {
         reply_markup: keyboard
       });
 
-      // Update last notification time
+      // Calculate next notification time with randomization
+      // Base interval in minutes
+      const baseInterval = user.notificationInterval;
+      // Variance: +/- 15%
+      const variance = baseInterval * 0.15;
+      const randomMinutes = Math.floor(Math.random() * (variance * 2 + 1)) - variance; // Range [-variance, +variance]
+      const nextIntervalMinutes = baseInterval + randomMinutes;
+
+      const nextTime = new Date();
+      nextTime.setMinutes(nextTime.getMinutes() + nextIntervalMinutes);
+
+      // Update last notification time and next schedule
       await prisma.user.update({
         where: { id: user.id },
-        data: { lastNotification: new Date() }
+        data: {
+          lastNotification: new Date(),
+          nextNotificationTime: nextTime
+        }
       });
 
     } catch (e) {

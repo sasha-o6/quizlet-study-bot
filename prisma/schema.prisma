@@ -16,6 +16,7 @@ model User {
   quietStartHour      Int      @default(23)
   quietEndHour        Int      @default(7)
   lastNotification    DateTime @default(now())
+  nextNotificationTime DateTime @default(now())
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
