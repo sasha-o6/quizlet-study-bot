@@ -189,5 +189,77 @@ bot.command('resume', async (ctx) => {
   ctx.reply('Resumed notifications.');
 });
 
+// Handle "Mark as Learned" callback
+bot.on('callback_query:data', async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  if (data.startsWith('learn:')) {
+    const wordId = parseInt(data.split(':')[1]);
+    const userId = ctx.from.id;
+
+    if (isNaN(wordId)) return ctx.answerCallbackQuery('Invalid word ID');
+
+    try {
+      // 1. Get User ID from DB
+      const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+      if (!user) return ctx.answerCallbackQuery('User not found');
+
+      // 2. Mark as learned
+      await prisma.wordReview.upsert({
+        where: { userId_wordId: { userId: user.id, wordId } },
+        update: { isLearned: true },
+        create: { userId: user.id, wordId, isLearned: true }
+      });
+
+      // 3. Update Message
+      // We need to reconstruct the message with the learned word crossed out
+      // And update the keyboard
+      const currentMessage = ctx.callbackQuery.message?.text || '';
+      const entities = ctx.callbackQuery.message?.entities || [];
+      const replyMarkup = ctx.callbackQuery.message?.reply_markup;
+
+      if (!replyMarkup) return ctx.answerCallbackQuery('Message outdated');
+
+      // Find the button that was clicked and change it
+      let buttonIndex = -1;
+      let rowIndex = -1;
+
+      replyMarkup.inline_keyboard.forEach((row, rIdx) => {
+        row.forEach((btn, bIdx) => {
+          // Type guard or cast to access callback_data
+          if ('callback_data' in btn && btn.callback_data === data) {
+            buttonIndex = bIdx;
+            rowIndex = rIdx;
+          }
+        });
+      });
+
+      if (rowIndex !== -1 && buttonIndex !== -1) {
+        // Change button to ✅
+        replyMarkup.inline_keyboard[rowIndex][buttonIndex] = { text: '✅', callback_data: 'noop' };
+
+        // Improve text update: Cross out the specific line?
+        // Parsing the text properly is hard without the original data. 
+        // For MVP, just update the button is enough feedback.
+        // Or we can try to find the line starting with "N."
+
+        // Let's try to strike through the text if possible. 
+        // We know the button text is "[N]".
+        // The line starts with "N.".
+
+        // For now, simpler approach: just acknowledge via toast and update button.
+        await ctx.editMessageReplyMarkup({ reply_markup: replyMarkup });
+      }
+
+      await ctx.answerCallbackQuery('Marked as learned! 🎉');
+
+    } catch (e) {
+      console.error('Error handling callback:', e);
+      await ctx.answerCallbackQuery('Failed to update.');
+    }
+  } else {
+    await ctx.answerCallbackQuery();
+  }
+});
+
 // Start scheduler
 notificationService.init(bot);

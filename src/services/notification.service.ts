@@ -1,5 +1,5 @@
 import { CronJob } from 'cron';
-import { Bot, Context } from 'grammy';
+import { Bot, Context, InlineKeyboard } from 'grammy';
 import { prisma } from './prisma.service';
 
 export class NotificationService {
@@ -11,7 +11,7 @@ export class NotificationService {
   init(bot: Bot<Context>) {
     this.bot = bot;
     // Run every 7 minutes
-    this.job = new CronJob('*/7 * * * *', () => this.checkAndSend());
+    this.job = process.env.NODE_ENV === 'development' ? new CronJob('*/1 * * * *', () => this.checkAndSend()) : new CronJob('*/7 * * * *', () => this.checkAndSend());
     this.job.start();
     console.log('Notification scheduler started.');
   }
@@ -59,8 +59,21 @@ export class NotificationService {
   async sendBatch(user: any) {
     if (!this.bot) return;
 
+    // Filter out learned words
+    // We need to fetch WordReview for this user to know what is learned
+    const reviews = await prisma.wordReview.findMany({
+      where: { userId: user.id },
+      select: { wordId: true, isLearned: true }
+    });
+
+    const learnedWordIds = new Set(reviews.filter(r => r.isLearned).map(r => r.wordId));
+
     // Flatten all words available for the user
-    const allWords = user.sets.flatMap((s: any) => s.words);
+    // Now we also filter by !isLearned
+    const allWords = user.sets
+      .flatMap((s: any) => s.words)
+      .filter((w: any) => !learnedWordIds.has(w.id));
+
     if (allWords.length === 0) return;
 
     // Select random words
@@ -84,12 +97,23 @@ export class NotificationService {
     // Construct Message
     let message = '';
     // `🎯 **Time to learn!**\n\n`;
-    selectedWords.forEach(w => {
-      message += `*${w.term}* - _${w.definition}_\n`;
+
+    // Create Inline Keyboard for "Mark as Learned"
+    const keyboard = new InlineKeyboard();
+
+    selectedWords.forEach((w, index) => {
+      const num = index + 1;
+      message += `${num}. *${w.term}* - ${w.definition}\n`;
+      keyboard.text(`[${num}]`, `learn:${w.id}`);
     });
 
+    message += `\n\n Tap the number below to mark a word as learned.`;
+
     try {
-      await this.bot.api.sendMessage(Number(user.telegramId), message, { parse_mode: 'Markdown' });
+      await this.bot.api.sendMessage(Number(user.telegramId), message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
 
       // Update last notification time
       await prisma.user.update({

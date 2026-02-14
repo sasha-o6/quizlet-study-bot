@@ -71,6 +71,7 @@ model WordReview {
   user      User     @relation(fields: [userId], references: [id])
   correctCount Int   @default(0)
   incorrectCount Int @default(0)
+  isLearned Boolean  @default(false)
   lastReviewed DateTime @default(now())
   nextReview   DateTime @default(now())
 
