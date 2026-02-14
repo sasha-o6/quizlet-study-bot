@@ -1,4 +1,5 @@
 import axios from 'axios';
+import cookies from "./cookies.json";
 
 export class FlareSolverrService {
     private baseUrl: string;
@@ -13,7 +14,8 @@ export class FlareSolverrService {
             const response = await axios.post(this.baseUrl, {
                 cmd: 'request.get',
                 url: url,
-                maxTimeout: 60000,
+                maxTimeout: 180000,
+                cookies: cookies
             }, {
                 headers: {
                     'Content-Type': 'application/json'
