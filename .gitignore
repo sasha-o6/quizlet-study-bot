@@ -2,4 +2,9 @@ node_modules
 dist
 .env
 pg_data
+postgres_data/
 npm-debug.log
+backups
+
+backups/*.sql
+!backups/.keep
