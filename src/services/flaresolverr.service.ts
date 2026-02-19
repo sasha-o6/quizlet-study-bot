@@ -15,10 +15,11 @@ export class FlareSolverrService {
                 cmd: 'request.get',
                 url: url,
                 maxTimeout: 180000,
-                cookies: cookies
+                // cookies: cookies
             }, {
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
             });
 
