@@ -1,3 +1,4 @@
+import fs from 'fs';
 import axios from 'axios';
 import cookies from "./cookies.json";
 
@@ -23,8 +24,16 @@ export class FlareSolverrService {
                 }
             });
 
+
+
+            const html = response.data.solution.response;
+
+            // ТИМЧАСОВИЙ ДЕБАГ: Записуємо HTML у файл, щоб ви могли його прочитати
+            if (process.env.NODE_ENV === 'development') fs.writeFileSync('debug_quizlet.html', html);
+
             if (response.data.status === 'ok') {
                 console.log(`[FlareSolverr] Success processing ${url}`);
+
                 return response.data.solution.response;
             } else {
                 throw new Error(`FlareSolverr failed: ${response.data.message}`);
