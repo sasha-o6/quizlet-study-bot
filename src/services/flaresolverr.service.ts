@@ -38,7 +38,7 @@ export class FlareSolverrService {
 
             if (response.data.status === 'ok') {
                 console.log(`[FlareSolverr] Success processing ${url}`);
-                return response;
+                return response + "";
             } else {
                 throw new Error(`FlareSolverr failed: ${response.data.message}`);
             }
