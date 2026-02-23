@@ -61,12 +61,8 @@ export class QuizletSyncService {
                     const findUrl = (obj: any) => {
                         if (!obj) return;
                         if (typeof obj === 'object') {
-                            if (obj.url && typeof obj.url === 'string' && obj.url.includes('/flash-cards/')) {
-                                setUrls.push("https://quizlet.com" + obj.url);
-                            }
-                            // Also check for `webUrl` which sometimes appears
-                            if (obj.webUrl && typeof obj.webUrl === 'string' && obj.webUrl.includes('/flash-cards/')) {
-                                setUrls.push(obj.webUrl);
+                            if (obj.studyMaterialId) {
+                                setUrls.push(`https://quizlet.com/ua/${obj.studyMaterialId}/`);
                             }
                             Object.values(obj).forEach(findUrl);
                         }

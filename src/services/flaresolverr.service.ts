@@ -10,40 +10,34 @@ export class FlareSolverrService {
     async fetchProtectedUrl(url: string): Promise<string> {
         try {
             const targetUrl = url;
-            const apiKey = process.env.ZENROWS_API_KEY;
+            const apiUrl = process.env.BRIGHTDATA_API_URL!;
+            const apiKey = process.env.BRIGHTDATA_API_KEY!;
+            const apiZone = process.env.BRIGHTDATA_API_ZONE!;
 
-            const response = await axios.get('https://api.zenrows.com/v1/', {
-                params: {
-                    url: targetUrl,
-                    apikey: apiKey,
-                    js_render: 'false',
-                    antibot: 'true',
-                    premium_proxy: 'true'
-                }
-            });
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: '{'
+                    + `"zone":"${apiZone}",`
+                    + `"url":"${targetUrl}",`
+                    + '"format":"json"'
+                    + '}'
+            };
 
-            // fs.writeFileSync('result.html', response.data);
+            const request = await fetch(apiUrl, options)
+            const response = await request.json()
+            // console.log("response: ", response)
 
-
-            // console.log(`[FlareSolverr] Requesting ${url}...`);
-            // const response = await axios.post(this.baseUrl, {
-            //     cmd: 'request.get',
-            //     url: url,
-            //     maxTimeout: 60000,
-            // }, {
-            //     headers: {
-            //         'Content-Type': 'application/json'
-            //     }
-            // });
-
-            if (response.data.status === 'ok') {
-                console.log(`[FlareSolverr] Success processing ${url}`);
-                return response + "";
+            if (response.status_code == 200) {
+                return response.body + ""
             } else {
-                throw new Error(`FlareSolverr failed: ${response.data.message}`);
+                throw new Error("[BRIGHTDATA] Failed to fetch protected URL: " + JSON.stringify(response))
             }
         } catch (error: any) {
-            console.error(`[FlareSolverr] Error: ${error.message}`);
+            console.error(`[FlareSolverr] Error: ${JSON.stringify(error)}`);
             throw error;
         }
     }
