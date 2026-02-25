@@ -117,7 +117,7 @@ export class NotificationService {
       // Base interval in minutes
       const baseInterval = user.notificationInterval;
       // Variance: +/- 15%
-      const variance = baseInterval * 0.15;
+      const variance = baseInterval * 0.05;
       const randomMinutes = Math.floor(Math.random() * (variance * 2 + 1)) - variance; // Range [-variance, +variance]
       const nextIntervalMinutes = baseInterval + randomMinutes;
 

@@ -122,13 +122,17 @@ bot.command('progress', async (ctx) => {
 
   const totalWords = user.sets.reduce((acc, s) => acc + s._count.words, 0);
   const totalSets = user.sets.length;
+  const learnedWords = await prisma.wordReview.count({
+    where: { userId: user.id, isLearned: true }
+  });
 
-  let msg = `📊 *Progres status*\n`;
-  msg += `Set Count: ${totalSets}\n`;
-  msg += `Total Words: ${totalWords}\n`;
-  msg += `Active: ${user.isActive ? 'Yes' : 'No'}\n`;
-  msg += `Interval: ${user.notificationInterval} mins\n`;
-  msg += `Quiet Hours: ${user.quietStartHour}:00 - ${user.quietEndHour}:00\n`;
+  let msg = `*Progres status*\n\n`;
+  msg += `🔢 Set Count: ${totalSets}\n`;
+  msg += `📊 Total Words: ${totalWords}\n`;
+  msg += `🧠 Learned Words: ${learnedWords}\n`;
+  msg += `${user.isActive ? '🟢' : '🔴'} Active: ${user.isActive ? 'Yes' : 'No'}\n`;
+  msg += `⏱️ Interval: ${user.notificationInterval} mins\n`;
+  msg += `🌙 Quiet Hours: ${user.quietStartHour}:00 - ${user.quietEndHour}:00\n`;
 
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
