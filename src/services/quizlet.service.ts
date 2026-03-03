@@ -1,5 +1,5 @@
 import { prisma } from './prisma.service';
-import { flareSolverrService } from './flaresolverr.service';
+import { scraperService } from './scraper.service';
 import * as cheerio from 'cheerio';
 
 export class QuizletSyncService {
@@ -28,7 +28,7 @@ export class QuizletSyncService {
             if (onProgress) await onProgress(`📂 Scraping folder: ${url}`);
 
             console.log(`[Quizlet] Scraping folder: ${url}`);
-            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const html = await scraperService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
 
             // Extract Folder Name
@@ -61,12 +61,8 @@ export class QuizletSyncService {
                     const findUrl = (obj: any) => {
                         if (!obj) return;
                         if (typeof obj === 'object') {
-                            if (obj.url && typeof obj.url === 'string' && obj.url.includes('/flash-cards/')) {
-                                setUrls.push("https://quizlet.com" + obj.url);
-                            }
-                            // Also check for `webUrl` which sometimes appears
-                            if (obj.webUrl && typeof obj.webUrl === 'string' && obj.webUrl.includes('/flash-cards/')) {
-                                setUrls.push(obj.webUrl);
+                            if (obj.studyMaterialId) {
+                                setUrls.push(`https://quizlet.com/ua/${obj.studyMaterialId}/`);
                             }
                             Object.values(obj).forEach(findUrl);
                         }
@@ -187,40 +183,48 @@ export class QuizletSyncService {
 
         try {
             if (onProgress) await onProgress(`📘 Fetching data...`);
-            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const html = await scraperService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
 
             // Extract terms
             let terms: { term: string, definition: string }[] = [];
 
-            // 1. Try Next.js Data
-            const nextDataScript = $('#__NEXT_DATA__').html();
-            if (nextDataScript) {
-                try {
-                    const json = JSON.parse(nextDataScript);
+            // 1. Try JSON-LD Data (schema.org/Quiz)
+            const ldJsonScripts = $('script[type="application/ld+json"]');
 
-                    // Recursive finder for studiableItems
-                    const findItems = (obj: any): any[] | null => {
-                        if (!obj || typeof obj !== 'object') return null;
-                        if (Array.isArray(obj.studiableItems) && obj.studiableItems.length > 0) return obj.studiableItems;
-                        for (const k in obj) {
-                            const res = findItems(obj[k]);
-                            if (res) return res;
+            ldJsonScripts.each((_, el) => {
+                try {
+                    const content = $(el).html();
+                    if (!content) return;
+
+                    const data = JSON.parse(content);
+
+                    // Allow both direct Object and Array of Objects
+                    const processLdJson = (json: any) => {
+                        if (json['@type'] === 'Quiz' && Array.isArray(json.hasPart)) {
+                            const extractedTerms = json.hasPart
+                                .filter((part: any) => part['@type'] === 'Question' && part.eduQuestionType === 'Flashcard')
+                                .map((part: any) => ({
+                                    term: part.text || '',
+                                    definition: part.acceptedAnswer?.text || ''
+                                }))
+                                .filter((t: any) => t.term || t.definition);
+
+                            if (extractedTerms.length > 0) {
+                                terms = terms.concat(extractedTerms);
+                            }
                         }
-                        return null;
                     };
 
-                    const items = findItems(json);
-                    if (items) {
-                        terms = items.map((t: any) => ({
-                            term: t.cardSides?.[0]?.media?.[0]?.plainText || t.word || '',
-                            definition: t.cardSides?.[1]?.media?.[0]?.plainText || t.definition || ''
-                        })).filter((t: any) => t.term || t.definition);
+                    if (Array.isArray(data)) {
+                        data.forEach(processLdJson);
+                    } else {
+                        processLdJson(data);
                     }
                 } catch (e) {
-                    console.error('Error parsing Next.js data for set:', e);
+                    console.error('Error parsing JSON-LD data for set:', e);
                 }
-            }
+            });
 
             // 2. Fallback DOM
             if (terms.length === 0) {

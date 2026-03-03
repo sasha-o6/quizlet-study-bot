@@ -11,22 +11,18 @@ services:
     volumes:
       - ./pg_data:/var/lib/postgresql/data # Ensure database persistence if db volume fails (redundant but safe)
 
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    environment:
-      - LOG_LEVEL=info
-      - LOG_HTML=false
-      - CAPTCHA_SOLVER=none
-      - TZ=Europe/Kyiv
-      - HOST_chromium_headless=true
-    ports:
-      - "8191:8191"
-    restart: always
-    # Optimizations for Raspberry Pi (ARM64) & Chromium
-    shm_size: '2gb'
-    security_opt:
-      - seccomp:unconfined
+  # flaresolverr:
+  #   image: ghcr.io/flaresolverr/flaresolverr:v3.3.15
+  #   container_name: flaresolverr
+  #   environment:
+  #     - LOG_LEVEL=info
+  #     - LOG_HTML=false
+  #     - CAPTCHA_SOLVER=none
+  #     - TZ=Europe/London
+  #     - HOST_chromium_headless=true
+  #   ports:
+  #     - "8191:8191"
+  #   restart: always
 
   db:
     image: postgres:16-alpine
