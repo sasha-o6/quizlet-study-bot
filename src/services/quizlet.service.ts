@@ -1,5 +1,5 @@
 import { prisma } from './prisma.service';
-import { flareSolverrService } from './flaresolverr.service';
+import { scraperService } from './scraper.service';
 import * as cheerio from 'cheerio';
 
 export class QuizletSyncService {
@@ -28,7 +28,7 @@ export class QuizletSyncService {
             if (onProgress) await onProgress(`📂 Scraping folder: ${url}`);
 
             console.log(`[Quizlet] Scraping folder: ${url}`);
-            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const html = await scraperService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
 
             // Extract Folder Name
@@ -183,7 +183,7 @@ export class QuizletSyncService {
 
         try {
             if (onProgress) await onProgress(`📘 Fetching data...`);
-            const html = await flareSolverrService.fetchProtectedUrl(url);
+            const html = await scraperService.fetchProtectedUrl(url);
             const $ = cheerio.load(html);
 
             // Extract terms

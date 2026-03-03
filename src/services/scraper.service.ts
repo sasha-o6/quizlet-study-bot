@@ -1,10 +1,6 @@
-import axios from 'axios';
-
-export class FlareSolverrService {
-    private baseUrl: string;
+export class ScraperService {
 
     constructor() {
-        this.baseUrl = process.env.FLARESOLVERR_URL || 'http://flaresolverr:8191/v1';
     }
 
     async fetchProtectedUrl(url: string): Promise<string> {
@@ -29,7 +25,6 @@ export class FlareSolverrService {
 
             const request = await fetch(apiUrl, options)
             const response = await request.json()
-            // console.log("response: ", response)
 
             if (response.status_code == 200) {
                 return response.body + ""
@@ -43,4 +38,4 @@ export class FlareSolverrService {
     }
 }
 
-export const flareSolverrService = new FlareSolverrService();
+export const scraperService = new ScraperService();
