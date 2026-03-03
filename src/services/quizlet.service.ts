@@ -75,7 +75,7 @@ export class QuizletSyncService {
 
             // 1.5. Check for Redux/Page Data in window
             // Sometimes data is in window.Quizlet or similar, but Cheerio sees static HTML.
-            // If FlareSolverr evaluates JS, maybe we can get more. 
+            // If ScraperService evaluates JS, maybe we can get more. 
             // For now, let's stick to advanced selectors.
 
 

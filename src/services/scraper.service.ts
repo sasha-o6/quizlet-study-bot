@@ -32,7 +32,7 @@ export class ScraperService {
                 throw new Error("[BRIGHTDATA] Failed to fetch protected URL: " + JSON.stringify(response))
             }
         } catch (error: any) {
-            console.error(`[FlareSolverr] Error: ${JSON.stringify(error)}`);
+            console.error(`[ScraperService] Error: ${JSON.stringify(error)}`);
             throw error;
         }
     }
