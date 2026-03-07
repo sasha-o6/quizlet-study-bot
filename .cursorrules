@@ -1,0 +1,51 @@
+# Project Context
+This is a Telegram bot designed to fetch, parse, and help users learn vocabulary from Quizlet. The bot uses the grammY framework for Telegram integration, Prisma for the database (PostgreSQL), and web scraping utilities (axios, cheerio, BrightData proxies) to interact with Quizlet.
+
+## Technology Stack
+- **Language**: TypeScript (Node.js)
+- **Framework**: grammY (Telegram Bot API)
+- **Database**: PostgreSQL (via Docker)
+- **ORM**: Prisma (`@prisma/client`)
+- **Scraping**: axios, cheerio, BrightData Proxies
+- **Infra/Deploy**: Docker & Docker Compose (`docker-compose.yml`)
+
+## Directory Structure
+- `src/index.ts`: Application entry point.
+- `src/bot.ts`: Main Telegram bot configuration and command/event handlers.
+- `src/services/`
+  - `quizlet.service.ts`: Core logic for interacting with Quizlet.
+  - `scraper.service.ts`: Handles web scraping via HTTP requests (proxies) and BrightData configuration.
+  - `prisma.service.ts`: Prisma client initialization and database logic.
+  - `notification.service.ts`: Cron-based or triggered notification logic.
+- `cookies.json`: Persistent or template cookies used for bypass (requires `--resolveJsonModule`).
+- `docker-compose.yml`: Local services (app + db) and environment configurations.
+- `backups/`: Contains `.sql` backups of the database.
+
+## Critical Coding Conventions for AI Agents
+1. **TypeScript Strictness**:
+   - Always strictly type function parameters and return types. Avoid returning `any` or ambiguous union types unless explicitly handled with type guards.
+   - If importing JSON files, ensure proper TS configuration options (`resolveJsonModule`).
+
+2. **Scraping & Request Handling**:
+   - Ensure environment variables for BrightData (`BRIGHTDATA_API_ZONE`, `BRIGHTDATA_API_URL`, `BRIGHTDATA_API_KEY`) are correctly verified and injected. Make sure auth headers are never undefined.
+   - Gracefully handle anti-bot measures / Cloudflare challenges.
+
+3. **Database Interactions**:
+   - Use Prisma for all database queries.
+   - Before running the app, `npx prisma generate` and `npx prisma migrate deploy` are standard procedures (as per `package.json`).
+   - Keep interactions within `src/services/` decoupled from the generic bot implementation.
+   - Handle unique constraint errors gracefully (e.g., if a user adds a Quizlet set that they already saved). Determine distinction between global uniqueness vs user-specific uniqueness.
+
+4. **Bot Framework (grammY)**:
+   - Command handlers should be small, delegating business logic to specific `service` classes or functions.
+   - Reply texts and localized messages should be concise and user-friendly.
+
+5. **Docker Environment**:
+   - For database tasks like dumps/restores, refer to `package.json` scripts (`db:backup`, `db:restore`) which execute through docker compose.
+
+## Instructions When Writing Code
+- ONLY write clean, production-ready TypeScript code.
+- If modifying schemas (`schema.prisma`), remember to prompt the user to migrate.
+- Keep the `package.json` scripts pristine unless explicitly instructed to modify.
+- Always handle async errors using `try/catch` and log them properly.
+- If implementing features like a daily word notification, utilize the `cron` package.
