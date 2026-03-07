@@ -68,12 +68,6 @@ CREATE TABLE "WordReview" (
     CONSTRAINT "WordReview_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "_UserSavedSets" (
-    "A" INTEGER NOT NULL,
-    "B" INTEGER NOT NULL
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "User_telegramId_key" ON "User"("telegramId");
 
@@ -88,12 +82,6 @@ CREATE UNIQUE INDEX "Word_setId_term_key" ON "Word"("setId", "term");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "WordReview_userId_wordId_key" ON "WordReview"("userId", "wordId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "_UserSavedSets_AB_unique" ON "_UserSavedSets"("A", "B");
-
--- CreateIndex
-CREATE INDEX "_UserSavedSets_B_index" ON "_UserSavedSets"("B");
 
 -- AddForeignKey
 ALTER TABLE "Folder" ADD CONSTRAINT "Folder_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -113,8 +101,3 @@ ALTER TABLE "WordReview" ADD CONSTRAINT "WordReview_wordId_fkey" FOREIGN KEY ("w
 -- AddForeignKey
 ALTER TABLE "WordReview" ADD CONSTRAINT "WordReview_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "_UserSavedSets" ADD CONSTRAINT "_UserSavedSets_A_fkey" FOREIGN KEY ("A") REFERENCES "Set"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_UserSavedSets" ADD CONSTRAINT "_UserSavedSets_B_fkey" FOREIGN KEY ("B") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
