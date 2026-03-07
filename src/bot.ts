@@ -115,13 +115,21 @@ bot.command('progress', async (ctx) => {
 
   const user = await prisma.user.findUnique({
     where: { telegramId: BigInt(userId) },
-    include: { sets: { include: { _count: { select: { words: true } } } } }
+    include: {
+      sets: { include: { _count: { select: { words: true } } } },
+      savedSets: { include: { _count: { select: { words: true } } } }
+    }
   });
 
   if (!user) return ctx.reply('Not registered.');
 
-  const totalWords = user.sets.reduce((acc, s) => acc + s._count.words, 0);
-  const totalSets = user.sets.length;
+  const allUserSets = [...user.sets, ...user.savedSets];
+  const uniqueSetsMap = new Map();
+  allUserSets.forEach(s => uniqueSetsMap.set(s.id, s));
+  const userSets = Array.from(uniqueSetsMap.values());
+
+  const totalWords = userSets.reduce((acc: number, s: any) => acc + s._count.words, 0);
+  const totalSets = userSets.length;
   const learnedWords = await prisma.wordReview.count({
     where: { userId: user.id, isLearned: true }
   });
@@ -271,7 +279,10 @@ bot.command('study', async (ctx) => {
 
   const user = await prisma.user.findUnique({
     where: { telegramId: BigInt(userId) },
-    include: { sets: { include: { words: true } } }
+    include: {
+      sets: { include: { words: true } },
+      savedSets: { include: { words: true } }
+    }
   });
 
   if (!user) {

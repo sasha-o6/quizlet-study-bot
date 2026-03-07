@@ -26,7 +26,10 @@ export class NotificationService {
       // Find users who are active and need a notification
       const users = await prisma.user.findMany({
         where: { isActive: true },
-        include: { sets: { include: { words: true } } } // Simple include for MVP
+        include: {
+          sets: { include: { words: true } },
+          savedSets: { include: { words: true } }
+        }
       });
 
       for (const user of users) {
@@ -66,9 +69,15 @@ export class NotificationService {
 
     const learnedWordIds = new Set(reviews.filter(r => r.isLearned).map(r => r.wordId));
 
+    // Combine and deduplicate sets
+    const allUserSets = [...user.sets, ...user.savedSets];
+    const uniqueSetsMap = new Map();
+    allUserSets.forEach((s: any) => uniqueSetsMap.set(s.id, s));
+    const userSets = Array.from(uniqueSetsMap.values());
+
     // Flatten all words available for the user
     // Now we also filter by !isLearned
-    const allWords = user.sets
+    const allWords = userSets
       .flatMap((s: any) => s.words)
       .filter((w: any) => !learnedWordIds.has(w.id));
 

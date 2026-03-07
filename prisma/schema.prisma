@@ -21,7 +21,8 @@ model User {
   updatedAt           DateTime @updatedAt
 
   folders     Folder[]
-  sets        Set[]
+  sets        Set[]      @relation("SetCreator")
+  savedSets   Set[]      @relation("UserSavedSets")
   reviews     WordReview[]
 }
 
@@ -45,7 +46,8 @@ model Set {
   folderId  Int?
   folder    Folder?  @relation(fields: [folderId], references: [id])
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation("SetCreator", fields: [userId], references: [id])
+  savedBy   User[]   @relation("UserSavedSets")
   words     Word[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

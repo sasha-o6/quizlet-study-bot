@@ -166,18 +166,31 @@ export class QuizletSyncService {
                         { quizletId: setId },
                         { quizletId: url }
                     ]
+                },
+                include: {
+                    savedBy: { select: { id: true } },
+                    _count: { select: { words: true } }
                 }
             });
 
             if (existingSet) {
                 console.log(`[Quizlet] Set ${setId} already exists in DB.`);
-                if (folderId && !existingSet.folderId) {
+
+                const isAlreadySavedByThisUser = existingSet.userId === userId || existingSet.savedBy.some((u: any) => u.id === userId);
+
+                if (!isAlreadySavedByThisUser) {
+                    const updateData: any = { savedBy: { connect: { id: userId } } };
+                    if (folderId && !existingSet.folderId) {
+                        updateData.folderId = folderId;
+                    }
                     await prisma.set.update({
                         where: { id: existingSet.id },
-                        data: { folderId }
+                        data: updateData
                     });
+                    return { success: true, count: existingSet._count.words, title: existingSet.title };
+                } else {
+                    return { success: true, count: 0, title: existingSet.title, message: 'Already exists' };
                 }
-                return { success: true, count: 0, title: existingSet.title, message: 'Already exists' };
             }
         }
 
@@ -265,8 +278,20 @@ export class QuizletSyncService {
                 // Upsert Set First
                 await prisma.set.upsert({
                     where: { quizletId: setId || url },
-                    update: { title, updatedAt: new Date(), folderId: folderId ?? undefined },
-                    create: { quizletId: setId || url, title, url, userId, folderId }
+                    update: {
+                        title,
+                        updatedAt: new Date(),
+                        folderId: folderId ?? undefined,
+                        savedBy: { connect: { id: userId } }
+                    },
+                    create: {
+                        quizletId: setId || url,
+                        title,
+                        url,
+                        userId,
+                        folderId,
+                        savedBy: { connect: { id: userId } }
+                    }
                 });
 
                 // Retrieve Set ID for words
