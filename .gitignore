@@ -9,4 +9,4 @@ backups
 backups/*.sql
 !backups/.keep
 
-prisma/migrations
+# prisma/migrations
