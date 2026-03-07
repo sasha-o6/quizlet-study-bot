@@ -6,6 +6,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - BOT_TOKEN=${BOT_TOKEN}
       - NODE_ENV=production
+      - WEBAPP_URL=${WEBAPP_URL:-https://your-ngrok-url.app}
       - BRIGHTDATA_API_ZONE=${BRIGHTDATA_API_ZONE}
       - BRIGHTDATA_API_URL=${BRIGHTDATA_API_URL}
       - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
@@ -26,3 +27,24 @@ services:
       - ./backups/latest.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "${DB_PORT:-5432}:5432" # Optional: Expose for local debugging
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - BOT_TOKEN=${BOT_TOKEN}
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_URL=http://localhost:3000

@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Quizlet Lite Mode variables */
+    --color-bg: #f6f7fb;
+    --color-card: #ffffff;
+    --color-text: #1a1d28;
+    --color-primary: #4255ff;
+    --color-primary-hover: #2836b8;
+    --color-gray: #939bb4;
+    --color-border: #e8e8e8;
+  }
+
+  .dark {
+    /* Quizlet Dark Mode variables */
+    --color-bg: #0a092d;
+    --color-card: #2e3856;
+    --color-text: #f0f1f3;
+    --color-primary: #4255ff;
+    --color-primary-hover: #5c6cff;
+    --color-gray: #939bb4;
+    --color-border: #4d5470;
+  }
+
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-text)] transition-colors duration-200 antialiased font-sans;
+    /* Optional: Integrate with Telegram WebApp variables */
+    /* background-color: var(--tg-theme-bg-color, var(--color-bg)); */
+    /* color: var(--tg-theme-text-color, var(--color-text)); */
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md active:scale-95;
+  }
+  .card {
+    @apply bg-[var(--color-card)] rounded-2xl p-6 shadow-sm border border-[var(--color-border)];
+  }
+}

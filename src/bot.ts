@@ -30,7 +30,17 @@ bot.command('start', async (ctx) => {
       update: { isActive: true },
       create: { telegramId: BigInt(userId) }
     });
-    ctx.reply('Welcome! I will help you learn vocabulary. \n\nUse /add [url] to add a Quizlet set.\nUse /settings to configure intervals.');
+
+    // Send a welcome message with a prominent inline button to open the Web App
+    const webAppUrl = process.env.WEBAPP_URL || 'https://google.com'; // Fallback for now
+
+    ctx.reply('Welcome back! I will help you learn vocabulary.\n\nTap the button below to open the Mini App and view your progress, add sets, or manage settings.', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '📱 Open Mini App', web_app: { url: webAppUrl } }
+        ]]
+      }
+    });
   } catch (e) {
     console.error(e);
     ctx.reply('Error starting bot.');

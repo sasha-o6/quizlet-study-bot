@@ -49,3 +49,9 @@ This is a Telegram bot designed to fetch, parse, and help users learn vocabulary
 - Keep the `package.json` scripts pristine unless explicitly instructed to modify.
 - Always handle async errors using `try/catch` and log them properly.
 - If implementing features like a daily word notification, utilize the `cron` package.
+
+## Detailed Coding Standards
+- **TypeScript**: Use `strict: true`. Use `import type` for types. Prefix interfaces with `I` (e.g., `IUser`) and types with `T` (e.g., `TState`). Use `const` objects for enums.
+- **Naming Conventions**: `PascalCase` for components/types, `camelCase` for variables, `ALL_CAPS` for constants, `onClick`/`setX` for handlers.
+- **Core Principles**: SRP (Single Responsibility Principle), zero dead code, prioritize simple readable solutions over clever ones.
+- **Hono (Backend)**: Use typed context, group routes by resource, middleware via `app.use()`.
