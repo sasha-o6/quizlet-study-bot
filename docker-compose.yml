@@ -41,13 +41,9 @@ services:
       - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
     depends_on:
       - db
-    ports:
-      - "3000:3000"
 
   frontend:
     build: ./frontend
     restart: always
     ports:
       - "5173:80"
-    environment:
-      - VITE_API_URL=http://localhost:3000

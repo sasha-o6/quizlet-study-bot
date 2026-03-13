@@ -3,8 +3,7 @@ import WebApp from '@twa-dev/sdk'
 import './index.css'
 import { Settings, Home, PlusCircle, Loader2, BookOpen } from 'lucide-preact'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-
+// API_URL is now handled via same-domain reverse proxy. Use relative `/api/` urls.
 interface IUserData {
   totalSets: number
   totalWords: number
@@ -50,7 +49,7 @@ function App() {
   const fetchUserData = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${API_URL}/api/user`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/user`, { headers: getAuthHeaders() })
       if (res.ok) {
         setUserData(await res.json())
       }
@@ -72,7 +71,7 @@ function App() {
 
     try {
       WebApp.MainButton.showProgress()
-      const res = await fetch(`${API_URL}/api/user/settings`, {
+      const res = await fetch(`/api/user/settings`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -103,7 +102,7 @@ function App() {
     setScrapeResult(null)
 
     try {
-      const res = await fetch(`${API_URL}/api/scrape`, {
+      const res = await fetch(`/api/scrape`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ url: scrapeUrl.trim() }),
@@ -263,22 +262,22 @@ function App() {
 
               <div>
                 <label className="text-[var(--color-gray)] text-sm block mb-1">Interval (minutes)</label>
-                <input type="number" name="interval" defaultValue={userData.settings.interval} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
+                <input type="number" inputmode="numeric" name="interval" defaultValue={userData.settings.interval} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
               </div>
 
               <div>
                 <label className="text-[var(--color-gray)] text-sm block mb-1">Words per batch</label>
-                <input type="number" name="batch" defaultValue={userData.settings.batch} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
+                <input type="number" inputmode="numeric" name="batch" defaultValue={userData.settings.batch} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[var(--color-gray)] text-sm block mb-1">Quiet Start</label>
-                  <input type="number" name="quietStart" defaultValue={userData.settings.quietStart} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none" />
+                  <label className="text-[var(--color-gray)] text-sm block mb-1 w-full">Quiet Start</label>
+                  <input type="time" name="quietStart" defaultValue={userData.settings.quietStart} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none w-full" />
                 </div>
                 <div>
-                  <label className="text-[var(--color-gray)] text-sm block mb-1">Quiet End</label>
-                  <input type="number" name="quietEnd" defaultValue={userData.settings.quietEnd} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none" />
+                  <label className="text-[var(--color-gray)] text-sm block mb-1 w-full">Quiet End</label>
+                  <input type="time" name="quietEnd" defaultValue={userData.settings.quietEnd} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none w-full" />
                 </div>
               </div>
 
