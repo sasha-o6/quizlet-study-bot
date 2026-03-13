@@ -24,10 +24,10 @@
     "grammy": "^1.21.1"
   },
   "devDependencies": {
-    "@prisma/client": "^7.4.2",
+    "@prisma/client": "^5.22.0",
     "@types/cheerio": "^0.22.35",
     "@types/node": "^20.19.37",
-    "prisma": "^5.10.2",
+    "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

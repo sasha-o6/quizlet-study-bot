@@ -11,12 +11,16 @@
   "license": "ISC",
   "private": true,
   "devDependencies": {
-    "@prisma/client": "^7.4.2",
+    "@prisma/client": "5.10.2",
     "@types/bun": "latest",
     "@types/node": "^25.3.5",
-    "hono": "^4.12.5"
+    "hono": "^4.12.5",
+    "prisma": "5.10.2"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
   }
 }

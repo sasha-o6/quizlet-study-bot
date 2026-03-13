@@ -36,6 +36,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - BOT_TOKEN=${BOT_TOKEN}
+      - BRIGHTDATA_API_ZONE=${BRIGHTDATA_API_ZONE}
+      - BRIGHTDATA_API_URL=${BRIGHTDATA_API_URL}
+      - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
     depends_on:
       - db
     ports:

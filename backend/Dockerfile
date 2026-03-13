@@ -11,8 +11,10 @@ COPY backend/src src
 
 # Copy root prisma manually to generate client
 COPY prisma ./prisma
-# Provide dummy DB URL for generation
-RUN npx prisma generate
+# Provide dummy DB URL for Prisma codegen (not used at runtime)
+# TODO: change this to real DB URL
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+RUN bunx prisma generate
 
 # Production config
 ENV NODE_ENV=production

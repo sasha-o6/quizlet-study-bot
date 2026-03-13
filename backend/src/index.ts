@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { prisma } from './prisma'
+import { validateInitData, getTelegramUserId } from './telegram-auth'
+import { scrapeSet } from './quizlet'
 
 type TVariables = {
-  userId: bigint
+  telegramId: bigint
+  dbUserId: number
 }
 
 const app = new Hono<{ Variables: TVariables }>()
@@ -12,60 +15,76 @@ app.use(
   '*',
   cors({
     origin: '*', // In production, restrict to your TMA URL
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'X-Telegram-Init-Data'],
     allowMethods: ['POST', 'GET', 'OPTIONS', 'PATCH'],
   })
 )
 
-// Middleware for Telegram WebApp validation (Simplified for now)
+// Telegram WebApp HMAC validation middleware
 app.use('/api/*', async (c, next) => {
-  // TODO: Validate Telegram initData properly using BOT_TOKEN
-  // For MVP development, we assume user ID is passed in headers or body
-  // DO NOT deploy this to production without HMAC validation!
-  const authHeader = c.req.header('Authorization')
-  if (!authHeader) {
-    // For local dev, let's fallback to a default test user if it exists
-    const firstUser = await prisma.user.findFirst()
-    if (firstUser) {
-      c.set('userId', firstUser.telegramId)
-      return await next()
+  const initData = c.req.header('X-Telegram-Init-Data')
+
+  if (!initData) {
+    // Dev fallback: use first user in DB
+    if (process.env.NODE_ENV !== 'production') {
+      const firstUser = await prisma.user.findFirst()
+      if (firstUser) {
+        c.set('telegramId', firstUser.telegramId)
+        c.set('dbUserId', firstUser.id)
+        return await next()
+      }
     }
-    return c.json({ error: 'Unauthorized' }, 401)
+    return c.json({ error: 'Unauthorized: missing init data' }, 401)
   }
 
-  // Example Auth: "Bearer <telegram_user_id>"
-  const token = authHeader.split(' ')[1]
-  if (!token) return c.json({ error: 'Unauthorized' }, 401)
+  // Validate HMAC in production
+  if (process.env.NODE_ENV === 'production' && !validateInitData(initData)) {
+    return c.json({ error: 'Unauthorized: invalid init data' }, 403)
+  }
 
-  c.set('userId', BigInt(token))
+  const telegramId = getTelegramUserId(initData)
+  if (!telegramId) {
+    return c.json({ error: 'Unauthorized: no user in init data' }, 401)
+  }
+
+  const user = await prisma.user.findUnique({ where: { telegramId } })
+  if (!user) {
+    return c.json({ error: 'User not found. Run /start in the bot first.' }, 404)
+  }
+
+  c.set('telegramId', telegramId)
+  c.set('dbUserId', user.id)
   await next()
 })
 
+// --- Routes ---
+
 app.get('/api/user', async (c) => {
-  const telegramId = c.get('userId')
+  const telegramId = c.get('telegramId')
 
   try {
     const user = await prisma.user.findUnique({
       where: { telegramId },
       include: {
         sets: { include: { _count: { select: { words: true } } } },
-        savedSets: { include: { _count: { select: { words: true } } } }
-      }
+        savedSets: { include: { _count: { select: { words: true } } } },
+      },
     })
 
     if (!user) return c.json({ error: 'User not found' }, 404)
 
     const allUserSets = [...user.sets, ...user.savedSets]
     const uniqueSetsMap = new Map()
-    allUserSets.forEach(s => uniqueSetsMap.set(s.id, s))
+    allUserSets.forEach((s) => uniqueSetsMap.set(s.id, s))
     const userSets = Array.from(uniqueSetsMap.values())
 
     const totalWords = userSets.reduce((acc: number, s: any) => acc + s._count.words, 0)
     const learnedWords = await prisma.wordReview.count({
-      where: { userId: user.id, isLearned: true }
+      where: { userId: user.id, isLearned: true },
     })
 
     return c.json({
+      totalSets: userSets.length,
       totalWords,
       learnedWords,
       settings: {
@@ -73,8 +92,8 @@ app.get('/api/user', async (c) => {
         batch: user.wordsPerBatch,
         quietStart: user.quietStartHour,
         quietEnd: user.quietEndHour,
-        isActive: user.isActive
-      }
+        isActive: user.isActive,
+      },
     })
   } catch (error) {
     console.error(error)
@@ -83,19 +102,19 @@ app.get('/api/user', async (c) => {
 })
 
 app.patch('/api/user/settings', async (c) => {
-  const telegramId = c.get('userId')
+  const telegramId = c.get('telegramId')
   const body = await c.req.json()
 
   try {
-    const updatedUser = await prisma.user.update({
+    await prisma.user.update({
       where: { telegramId },
       data: {
         notificationInterval: body.interval,
         wordsPerBatch: body.batch,
         quietStartHour: body.quietStart,
         quietEndHour: body.quietEnd,
-        isActive: body.isActive
-      }
+        isActive: body.isActive,
+      },
     })
     return c.json({ success: true })
   } catch (error) {
@@ -104,8 +123,31 @@ app.patch('/api/user/settings', async (c) => {
   }
 })
 
+app.post('/api/scrape', async (c) => {
+  const dbUserId = c.get('dbUserId')
+  const { url } = await c.req.json()
+
+  if (!url || typeof url !== 'string') {
+    return c.json({ error: 'URL is required' }, 400)
+  }
+
+  if (!url.includes('quizlet.com')) {
+    return c.json({ error: 'Must be a Quizlet URL' }, 400)
+  }
+
+  try {
+    const result = await scrapeSet(url, dbUserId)
+    return c.json(result)
+  } catch (error: any) {
+    console.error('[/api/scrape] Error:', error)
+    return c.json({ error: error.message || 'Scraping failed' }, 500)
+  }
+})
+
+// --- Server ---
+
 const port = parseInt(process.env.PORT || '3000', 10)
-console.log(`Server running on port ${port}`)
+console.log(`Backend server running on port ${port}`)
 
 export default {
   port,

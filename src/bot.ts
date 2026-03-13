@@ -67,7 +67,7 @@ bot.command('add', async (ctx) => {
         return ctx.reply('User not found. Run /start first.');
       }
 
-      let statusMessage: any;
+      let statusMessage: { message_id: number } | undefined;
       try {
         statusMessage = await ctx.reply('⏳ Starting sync...');
       } catch (e) {
@@ -135,7 +135,7 @@ bot.command('progress', async (ctx) => {
 
   const allUserSets = [...user.sets, ...user.savedSets];
   const uniqueSetsMap = new Map();
-  allUserSets.forEach(s => uniqueSetsMap.set(s.id, s));
+  allUserSets.forEach((s: { id: number }) => uniqueSetsMap.set(s.id, s));
   const userSets = Array.from(uniqueSetsMap.values());
 
   const totalWords = userSets.reduce((acc: number, s: any) => acc + s._count.words, 0);

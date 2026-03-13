@@ -67,25 +67,25 @@ export class NotificationService {
       select: { wordId: true, isLearned: true }
     });
 
-    const learnedWordIds = new Set(reviews.filter(r => r.isLearned).map(r => r.wordId));
+    const learnedWordIds = new Set(reviews.filter((r: { isLearned: boolean }) => r.isLearned).map((r: { wordId: number }) => r.wordId));
 
     // Combine and deduplicate sets
     const allUserSets = [...user.sets, ...user.savedSets];
     const uniqueSetsMap = new Map();
-    allUserSets.forEach((s: any) => uniqueSetsMap.set(s.id, s));
+    allUserSets.forEach((s: { id: number }) => uniqueSetsMap.set(s.id, s));
     const userSets = Array.from(uniqueSetsMap.values());
 
     // Flatten all words available for the user
     // Now we also filter by !isLearned
     const allWords = userSets
-      .flatMap((s: any) => s.words)
-      .filter((w: any) => !learnedWordIds.has(w.id));
+      .flatMap((s: { words: { id: number; term: string; definition: string }[] }) => s.words)
+      .filter((w: { id: number }) => !learnedWordIds.has(w.id));
 
     if (allWords.length === 0) return;
 
     // Select random words
     const batchSize = user.wordsPerBatch;
-    const selectedWords: any[] = [];
+    const selectedWords: { id: number; term: string; definition: string }[] = [];
     const usedIndices = new Set<number>();
 
     // Safety loop to prevent infinite loop if batchSize > total words
@@ -108,7 +108,7 @@ export class NotificationService {
     // Create Inline Keyboard for "Mark as Learned"
     const keyboard = new InlineKeyboard();
 
-    selectedWords.forEach((w, index) => {
+    selectedWords.forEach((w: { id: number; term: string; definition: string }, index: number) => {
       const num = index + 1;
       message += `${num}. *${w.term}* - ${w.definition}\n`;
       keyboard.text(`[${num}]`, `learn:${w.id}`);
