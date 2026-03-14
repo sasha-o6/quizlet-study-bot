@@ -24,9 +24,11 @@ graph TD
         Backend[Backend API<br>Bun + Hono :3000]
         Bot[Telegram Bot Worker<br>Node.js + grammY]
         DB[(PostgreSQL 16)]
+        Tunnel[Cloudflared Tunnel<br>Container]
         
         Nginx -->|Serves / | UI
         Nginx -->|Proxies /api/*| Backend
+        Tunnel -->|Routes internal traffic to| Nginx
     end
     
     subgraph "External Providers"
@@ -41,6 +43,7 @@ graph TD
     
     %% API & WebApp routing
     TMA <-->|API Calls via ngrok/Cloudflare| Nginx
+    Cloudflare[Cloudflare Edge] <-->|Secure Tunnel| Tunnel
     
     %% Backend & DB connections
     Backend <-->|Prisma ORM| DB
@@ -79,7 +82,11 @@ graph TD
   - Executes the heavy lifting of scraping Quizlet links (`/api/scrape`) via BrightData.
   - Parses Quizlet's HTML/JSON-LD data to extract terms and definitions.
 
-### 4. `db` (Database)
+### 4. `cloudflared` (Cloudflare Tunnel)
+- **Tech Stack:** Official `cloudflare/cloudflared` Docker image.
+- **Responsibility:** Securely exposes the `frontend` container (which serves both UI and API) to the public internet without needing to open any ports on your router or host OS firewall. It connects directly to the Cloudflare Edge networks.
+
+### 5. `db` (Database)
 - **Tech Stack:** PostgreSQL 16
 - **Responsibility:** Centralized data storage for Users, Folders, Sets, Words, and WordReviews, shared by both the `app` and `backend`.
 
@@ -116,12 +123,15 @@ Edit the `.env` file in the root directory.
 5. Run `docker compose up --build -d`.
 6. Open your Dev Bot in Telegram and press "Start".
 
-#### For Production (e.g., Raspberry Pi + Ubuntu Server):
+#### For Production (e.g., Raspberry Pi 5 + Ubuntu Server):
+We run Cloudflare Tunnel natively **inside** Docker. You don't need to install `cloudflared` on your host OS.
 1. Comment out the `DEVELOPMENT` block and uncomment the `PRODUCTION` block in `.env`.
 2. Set your production `BOT_TOKEN`.
 3. Set your `WEBAPP_URL` to your fixed Cloudflare Tunnel domain (e.g., `https://quizlet-bot.yourdomain.com`).
-4. Ensure Cloudflare Tunnel points exactly to port `5173` on your Raspberry Pi.
-5. Setup the infrastructure: `docker compose up --build -d`.
+4. Go to Cloudflare Zero Trust Dashboard -> Tunnels, create a new tunnel, and copy the provided Tunnel Token.
+5. Set `CLOUDFLARED_TOKEN` in your `.env`.
+6. Configure the tunnel routing in Cloudflare Dashboard to point to `http://frontend:5173`.
+7. Setup the infrastructure: `docker compose up --build -d`.
 
 ### Why Nginx?
 We bundle Nginx directly inside the `frontend` container to solve Cross-Origin Resource Sharing (CORS) and complexity. Because Nginx listens on port `80` (mapped to `5173` locally) and routes `/api/*` to the Bun backend (`http://backend:3000`), the frontend app makes relative API requests (`fetch('/api/user')`), eliminating the need for complex multi-domain SSL certificates or dynamic `VITE_API_URL` build arguments.
