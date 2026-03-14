@@ -77,8 +77,8 @@ function App() {
         body: JSON.stringify({
           interval: Number(formData.get('interval')),
           batch: Number(formData.get('batch')),
-          quietStart: Number(formData.get('quietStart')),
-          quietEnd: Number(formData.get('quietEnd')),
+          quietStart: Number(String(formData.get('quietStart')).split(':')[0]),
+          quietEnd: Number(String(formData.get('quietEnd')).split(':')[0]),
           isActive: formData.get('isActive') === 'on',
         }),
       })
@@ -270,25 +270,28 @@ function App() {
                 <input type="number" inputmode="numeric" name="batch" defaultValue={userData.settings.batch} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[var(--color-gray)] text-sm block mb-1 w-full">Quiet Start</label>
-                  <input type="time" name="quietStart" defaultValue={userData.settings.quietStart} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none w-full" />
-                </div>
-                <div>
-                  <label className="text-[var(--color-gray)] text-sm block mb-1 w-full">Quiet End</label>
-                  <input type="time" name="quietEnd" defaultValue={userData.settings.quietEnd} min={0} max={23} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none w-full" />
-                </div>
+              <hr className="border-[var(--color-border)] my-6" />
+
+              <div>
+                <label className="text-[var(--color-gray)] text-sm block mb-1">Quiet Start</label>
+                <input type="time" name="quietStart" defaultValue={`${String(userData.settings.quietStart).padStart(2, '0')}:00`} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
               </div>
 
-              <button type="submit" className="btn-primary w-full mt-4">Save Settings</button>
+              <div>
+                <label className="text-[var(--color-gray)] text-sm block mb-1">Quiet End</label>
+                <input type="time" name="quietEnd" defaultValue={`${String(userData.settings.quietEnd).padStart(2, '0')}:00`} className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors" />
+              </div>
+
+              <hr className="border-[var(--color-border)] my-6" />
+
+              <button type="submit" className="btn-primary w-full mt-4 position-sticky bottom-0">Save Settings</button>
             </form>
           </div>
         )}
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-card)] border-t border-[var(--color-border)] flex justify-between items-center px-6">
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-card)] border-t border-[var(--color-border)] flex justify-between items-center px-6 pt-2 pb-4">
         <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-16 h-full ${activeTab === 'home' ? 'text-[var(--color-primary)]' : 'text-[var(--color-gray)]'}`}>
           <Home size={24} />
           <span className="text-[10px] font-medium mt-1">Home</span>
