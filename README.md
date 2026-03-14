@@ -130,7 +130,7 @@ We run Cloudflare Tunnel natively **inside** Docker. You don't need to install `
 3. Set your `WEBAPP_URL` to your fixed Cloudflare Tunnel domain (e.g., `https://quizlet-bot.yourdomain.com`).
 4. Go to Cloudflare Zero Trust Dashboard -> Tunnels, create a new tunnel, and copy the provided Tunnel Token.
 5. Set `CLOUDFLARED_TOKEN` in your `.env`.
-6. Configure the tunnel routing in Cloudflare Dashboard to point to `http://frontend:5173`.
+6. Configure the tunnel routing in Cloudflare Dashboard to point to `http://frontend:80`.
 7. Setup the infrastructure: `docker compose up --build -d`.
 
 ### Why Nginx?
