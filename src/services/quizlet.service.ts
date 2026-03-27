@@ -121,7 +121,15 @@ export class QuizletSyncService {
             let setsScraped = 0;
             let failedCount = 0;
 
-            for (const setUrl of setUrls) {
+            for (let i = 0; i < setUrls.length; i++) {
+                const setUrl = setUrls[i];
+
+                if (onProgress) {
+                    const progress = Math.round((i / setUrls.length) * 10);
+                    const bar = '🟩'.repeat(progress) + '⬜'.repeat(10 - progress);
+                    await onProgress(`📁 Syncing "${folderName}"\n\n${bar}\n📈 Progress: ${i} / ${setUrls.length} sets`);
+                }
+
                 // Check if set exists
                 const existingSet = await prisma.set.findUnique({ where: { quizletId: setUrl } });
                 if (existingSet) {

@@ -108,17 +108,49 @@ function App() {
         body: JSON.stringify({ url: scrapeUrl.trim() }),
       })
 
-      const data = await res.json()
-
-      if (data.success) {
-        const msg = data.message
-          ? `${data.title} — ${data.message}`
-          : `✅ Added ${data.count} words from "${data.title}"`
-        setScrapeResult(msg)
-        setScrapeUrl('')
-        fetchUserData()
+      const contentType = res.headers.get('content-type')
+      if (contentType && (contentType.includes('text/plain') || contentType.includes('event-stream'))) {
+        const reader = res.body?.getReader()
+        if (reader) {
+          const decoder = new TextDecoder()
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const chunk = decoder.decode(value, { stream: true })
+            if (chunk) {
+              const parts = chunk.split('\n\n')
+              for (const part of parts) {
+                if (!part.trim()) continue
+                if (part.startsWith('[RESULT] ')) {
+                  const data = JSON.parse(part.substring(9))
+                  if (data.success) {
+                    setScrapeResult(`✅ Folder Synced! Added ${data.setsCount} sets (${data.totalWords} words).`)
+                    setScrapeUrl('')
+                    fetchUserData()
+                  } else {
+                    setScrapeResult(`❌ ${data.error || 'Unknown error'}`)
+                  }
+                } else if (part.startsWith('[ERROR] ')) {
+                  setScrapeResult(`❌ ${part.substring(8)}`)
+                } else {
+                  setScrapeResult(part)
+                }
+              }
+            }
+          }
+        }
       } else {
-        setScrapeResult(`❌ ${data.error || 'Unknown error'}`)
+        const data = await res.json()
+        if (data.success) {
+          const msg = data.message
+            ? `${data.title} — ${data.message}`
+            : `✅ Added ${data.count} words from "${data.title}"`
+          setScrapeResult(msg)
+          setScrapeUrl('')
+          fetchUserData()
+        } else {
+          setScrapeResult(`❌ ${data.error || 'Unknown error'}`)
+        }
       }
     } catch {
       setScrapeResult('❌ Network error')

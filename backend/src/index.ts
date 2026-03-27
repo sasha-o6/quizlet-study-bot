@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { streamText } from 'hono/streaming'
 import { prisma } from './prisma'
 import { validateInitData, getTelegramUserId } from './telegram-auth'
-import { scrapeSet } from './quizlet'
+import { scrapeSet, scrapeFolder } from './quizlet'
 
 type TVariables = {
   telegramId: bigint
@@ -133,6 +134,19 @@ app.post('/api/scrape', async (c) => {
 
   if (!url.includes('quizlet.com')) {
     return c.json({ error: 'Must be a Quizlet URL' }, 400)
+  }
+
+  if (url.includes('/folders/')) {
+    return streamText(c, async (stream) => {
+      try {
+        const result = await scrapeFolder(url, dbUserId, async (msg: string) => {
+          await stream.write(msg + '\n\n')
+        })
+        await stream.write(`[RESULT] ${JSON.stringify(result)}\n\n`)
+      } catch (error: any) {
+        await stream.write(`[ERROR] ${error.message || 'Scraping failed'}\n\n`)
+      }
+    })
   }
 
   try {

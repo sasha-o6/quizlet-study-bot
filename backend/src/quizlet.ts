@@ -204,3 +204,100 @@ export async function scrapeSet(url: string, userId: number): Promise<TScrapeRes
         return { success: false, error: `Failed to scrape set: ${error.message}` }
     }
 }
+
+function wait(min: number, max: number) {
+    const ms = Math.floor(Math.random() * (max - min + 1) + min)
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export async function scrapeFolder(url: string, userId: number, onProgress?: (msg: string) => Promise<void>): Promise<TScrapeResult & { setsCount?: number, totalWords?: number, failedCount?: number }> {
+    console.log(`[Quizlet API] Scraping folder: ${url}`)
+    if (onProgress) await onProgress(`🔍 Fetching folder information...`)
+
+    try {
+        const html = await fetchProtectedUrl(url)
+        const $ = cheerio.load(html)
+        
+        let folderName = $('h1').text().trim() || 'Quizlet Folder'
+        let setUrls: string[] = []
+
+        // 1. Try Next.js Data
+        const nextDataScript = $('#__NEXT_DATA__').html()
+        if (nextDataScript) {
+            try {
+                const json = JSON.parse(nextDataScript)
+                const findUrl = (obj: any) => {
+                    if (!obj) return
+                    if (typeof obj === 'object') {
+                        if (obj.studyMaterialId) {
+                            setUrls.push(`https://quizlet.com/ua/${obj.studyMaterialId}/`)
+                        }
+                        Object.values(obj).forEach(findUrl)
+                    }
+                }
+                findUrl(json)
+            } catch (e) {
+                console.error('Error parsing Next.js data for folder:', e)
+            }
+        }
+
+        // Extract Links (Fallback)
+        const selectors = [
+            '[data-testid="content-list-item-card"] a',
+            '.SetPreviewCard-header a',
+            'a[href*="/flash-cards/"]',
+            'a[href*="/learn/"]'
+        ]
+
+        selectors.forEach(sel => {
+            $(sel).each((_: number, el: any) => {
+                const href = $(el).attr('href')
+                if (href && (href.includes('/flash-cards/') || /\/\d+\//.test(href))) {
+                    setUrls.push(href.startsWith('http') ? href : `https://quizlet.com${href}`)
+                }
+            })
+        })
+
+        setUrls = [...new Set(setUrls)]
+        console.log(`[Quizlet API] Found ${setUrls.length} sets in folder.`)
+
+        if (setUrls.length === 0) {
+            return { success: false, error: 'No sets found in folder. Check Quizlet.' }
+        }
+
+        let totalWords = 0
+        let setsScraped = 0
+        let failedCount = 0
+
+        for (let i = 0; i < setUrls.length; i++) {
+            const setUrl = setUrls[i] as string
+            
+            if (onProgress) {
+                const progress = Math.round((i / setUrls.length) * 10)
+                const bar = '🟩'.repeat(progress) + '⬜'.repeat(10 - progress)
+                await onProgress(`📁 Syncing "${folderName}"\n\n${bar}\n📈 Progress: ${i} / ${setUrls.length} sets`)
+            }
+
+            // Scrape Set
+            const result = await scrapeSet(setUrl, userId)
+            if (result.success) {
+                if (result.count) {
+                    totalWords += result.count
+                    setsScraped++
+                }
+            } else {
+                failedCount++
+            }
+            await wait(1000, 3000)
+        }
+
+        if (onProgress) {
+            await onProgress(`✅ **Folder Sync Complete!**\nAdded ${setsScraped} sets with ${totalWords} total words.`)
+        }
+
+        return { success: true, count: totalWords, setsCount: setsScraped, totalWords, failedCount, title: folderName }
+    } catch (error: any) {
+        console.error('[Quizlet API] Folder Error:', error)
+        return { success: false, error: `Failed to scrape folder: ${error.message}` }
+    }
+}
