@@ -345,7 +345,7 @@ function App() {
                 <input
                   type="time"
                   name="quietStart"
-                  defaultValue={`${String(userData.settings.quietStart).padStart(2, '0')}:00`}
+                  defaultValue={`${String(userData.settings.quietStart).padStart(2, '0')}:${String(userData.settings.quietStartMin).padStart(2, '0')}`}
                   className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors"
                 />
               </div>
@@ -355,7 +355,7 @@ function App() {
                 <input
                   type="time"
                   name="quietEnd"
-                  defaultValue={`${String(userData.settings.quietEnd).padStart(2, '0')}:00`}
+                  defaultValue={`${String(userData.settings.quietEnd).padStart(2, '0')}:${String(userData.settings.quietEndMin).padStart(2, '0')}`}
                   className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] outline-none focus:border-[var(--color-primary)] transition-colors"
                 />
               </div>
