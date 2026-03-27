@@ -97,6 +97,57 @@ export async function scrapeSet(url: string, userId: number): Promise<TScrapeRes
             }
         })
 
+        // 2. Try __NEXT_DATA__ if not enough terms
+        if (terms.length <= 15) {
+            const nextDataScript = $('script#__NEXT_DATA__').html()
+            if (nextDataScript) {
+                try {
+                    const nextData = JSON.parse(nextDataScript)
+                    
+                    const findTerms = (obj: any) => {
+                        if (!obj || typeof obj !== 'object') return
+                        
+                        if (obj.wordSide && obj.definitionSide) {
+                            const termText = obj.wordSide.media?.find((m: any) => m.type === 1)?.plainText || ''
+                            const defText = obj.definitionSide.media?.find((m: any) => m.type === 1)?.plainText || ''
+                            
+                            if (termText || defText) {
+                                if (!terms.some((t: any) => t.term === termText && t.definition === defText)) {
+                                    terms.push({ term: termText, definition: defText })
+                                }
+                            }
+                        } else if (Array.isArray(obj.cardSides) && obj.cardSides.length >= 2) {
+                            const wordSide = obj.cardSides.find((s: any) => s.label === 'word') || obj.cardSides[0]
+                            const defSide = obj.cardSides.find((s: any) => s.label === 'definition') || obj.cardSides[1]
+                            
+                            const termText = wordSide.media?.[0]?.plainText || ''
+                            const defText = defSide.media?.[0]?.plainText || ''
+                            
+                            if (termText || defText) {
+                                if (!terms.some((t: any) => t.term === termText && t.definition === defText)) {
+                                    terms.push({ term: termText, definition: defText })
+                                }
+                            }
+                        }
+
+                        for (const key in obj) {
+                            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                                if (typeof obj[key] === 'object') {
+                                    findTerms(obj[key])
+                                } else if (typeof obj[key] === 'string' && obj[key].startsWith('{') && (obj[key].includes('wordSide') || obj[key].includes('cardSides') || obj[key].includes('studiableItems'))) {
+                                    try { findTerms(JSON.parse(obj[key])) } catch (e) {}
+                                }
+                            }
+                        }
+                    }
+                    
+                    findTerms(nextData)
+                } catch (e) {
+                    console.error('Error parsing __NEXT_DATA__:', e)
+                }
+            }
+        }
+
         // DOM fallback
         if (terms.length === 0) {
             const termTexts = $('.TermText')
