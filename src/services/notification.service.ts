@@ -21,7 +21,6 @@ export class NotificationService {
 
     try {
       const now = new Date();
-      const currentHour = now.getHours();
 
       // Find users who are active and need a notification
       const users = await prisma.user.findMany({
@@ -33,14 +32,23 @@ export class NotificationService {
       });
 
       for (const user of users) {
-        // 1. Quiet Hours Check
+        // 1a. Quiet Days Check — use user's timezone
+        const userDay = this.getUserLocalDay(now, user.timezone);
+        if (user.quietDays && user.quietDays.includes(userDay)) continue;
+
+        // 1b. Quiet Time Check — use user's timezone (hour + minute precision)
+        const userHour = this.getUserLocalHour(now, user.timezone);
+        const userMinute = this.getUserLocalMinute(now, user.timezone);
+        const currentMinutes = userHour * 60 + userMinute;
+        const startMinutes = user.quietStartHour * 60 + (user.quietStartMin || 0);
+        const endMinutes = user.quietEndHour * 60 + (user.quietEndMin || 0);
+
         let inQuietHours = false;
-        if (user.quietStartHour > user.quietEndHour) {
-          // Spans midnight (e.g. 23 to 7)
-          if (currentHour >= user.quietStartHour || currentHour < user.quietEndHour) inQuietHours = true;
+        if (startMinutes > endMinutes) {
+          // Spans midnight (e.g. 23:00 to 7:30)
+          if (currentMinutes >= startMinutes || currentMinutes < endMinutes) inQuietHours = true;
         } else {
-          // Standard day (e.g. 1 to 5) - rare but possible
-          if (currentHour >= user.quietStartHour && currentHour < user.quietEndHour) inQuietHours = true;
+          if (currentMinutes >= startMinutes && currentMinutes < endMinutes) inQuietHours = true;
         }
 
         if (inQuietHours) continue;
@@ -145,6 +153,46 @@ export class NotificationService {
     } catch (e) {
       console.error(`Failed to send message to ${user.telegramId}:`, e);
       // If user blocked bot, maybe deactivate user? For now just log.
+    }
+  }
+
+  private getUserLocalHour(now: Date, timezone: string): number {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        hour12: false,
+        timeZone: timezone || 'UTC',
+      });
+      return parseInt(formatter.format(now), 10);
+    } catch {
+      // Fallback if timezone string is invalid
+      return now.getUTCHours();
+    }
+  }
+
+  private getUserLocalMinute(now: Date, timezone: string): number {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        minute: 'numeric',
+        timeZone: timezone || 'UTC',
+      });
+      return parseInt(formatter.format(now), 10);
+    } catch {
+      return now.getUTCMinutes();
+    }
+  }
+
+  private getUserLocalDay(now: Date, timezone: string): number {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        timeZone: timezone || 'UTC',
+      });
+      const dayStr = formatter.format(now);
+      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      return dayMap[dayStr] ?? now.getUTCDay();
+    } catch {
+      return now.getUTCDay();
     }
   }
 }

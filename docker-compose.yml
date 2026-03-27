@@ -10,6 +10,7 @@ services:
       - BRIGHTDATA_API_ZONE=${BRIGHTDATA_API_ZONE}
       - BRIGHTDATA_API_URL=${BRIGHTDATA_API_URL}
       - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
+      - TZ=${TZ:-Europe/Kyiv}
     depends_on:
       - db
     volumes:
@@ -22,6 +23,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=${TZ:-Europe/Kyiv}
     volumes:
       - ./pg_data:/var/lib/postgresql/data
       - ./backups/latest.sql:/docker-entrypoint-initdb.d/init.sql
@@ -39,6 +41,7 @@ services:
       - BRIGHTDATA_API_ZONE=${BRIGHTDATA_API_ZONE}
       - BRIGHTDATA_API_URL=${BRIGHTDATA_API_URL}
       - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
+      - TZ=${TZ:-Europe/Kyiv}
     depends_on:
       - db
 

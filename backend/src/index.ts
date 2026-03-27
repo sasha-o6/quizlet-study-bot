@@ -92,8 +92,12 @@ app.get('/api/user', async (c) => {
         interval: user.notificationInterval,
         batch: user.wordsPerBatch,
         quietStart: user.quietStartHour,
+        quietStartMin: user.quietStartMin,
         quietEnd: user.quietEndHour,
+        quietEndMin: user.quietEndMin,
         isActive: user.isActive,
+        timezone: user.timezone,
+        quietDays: user.quietDays,
       },
     })
   } catch (error) {
@@ -113,8 +117,12 @@ app.patch('/api/user/settings', async (c) => {
         notificationInterval: body.interval,
         wordsPerBatch: body.batch,
         quietStartHour: body.quietStart,
+        quietStartMin: body.quietStartMin ?? 0,
         quietEndHour: body.quietEnd,
+        quietEndMin: body.quietEndMin ?? 0,
         isActive: body.isActive,
+        ...(body.timezone ? { timezone: body.timezone } : {}),
+        ...(body.quietDays !== undefined ? { quietDays: body.quietDays } : {}),
       },
     })
     return c.json({ success: true })

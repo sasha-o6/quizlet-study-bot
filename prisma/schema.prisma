@@ -14,7 +14,11 @@ model User {
   notificationInterval Int     @default(60) // in minutes
   wordsPerBatch       Int      @default(5)
   quietStartHour      Int      @default(23)
+  quietStartMin       Int      @default(0)
   quietEndHour        Int      @default(7)
+  quietEndMin         Int      @default(0)
+  timezone            String   @default("UTC")
+  quietDays           Int[]    @default([])
   lastNotification    DateTime @default(now())
   nextNotificationTime DateTime @default(now())
   createdAt           DateTime @default(now())

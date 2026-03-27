@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "quietDays" INTEGER[] DEFAULT ARRAY[]::INTEGER[];
