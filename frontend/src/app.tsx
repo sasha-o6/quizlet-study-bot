@@ -188,12 +188,16 @@ function App() {
 
   return (
     <div className="min-h-screen pb-20">
-      <header className="px-6 py-4 sticky top-0 bg-[var(--color-bg)] z-10 bg-opacity-90 backdrop-blur-md">
+      <header className="px-6 py-4 sticky top-0 bg-[var(--color-bg)] z-10 bg-opacity-90 backdrop-blur-md flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">
           {activeTab === 'home' && 'Your Progress'}
           {activeTab === 'settings' && 'Settings'}
-          {activeTab === 'add' && 'Add Set / Folder'}
+          {activeTab === 'add' && 'Add Set or Folder'}
         </h1>
+
+        <a href="https://send.monobank.ua/jar/Ab1gRZPzfc" class={'btn-primary'}>
+          Support
+        </a>
       </header>
 
       <main className="px-6 py-4 space-y-6">
