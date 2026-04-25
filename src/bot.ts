@@ -87,6 +87,20 @@ bot.command('add', async (ctx) => {
         }
       };
 
+      // Helper: re-fetch user with sets and send a word batch
+      const sendFirstBatch = async () => {
+        const freshUser = await prisma.user.findUnique({
+          where: { telegramId: BigInt(userId) },
+          include: {
+            sets: { include: { words: true } },
+            savedSets: { include: { words: true } }
+          }
+        });
+        if (freshUser) {
+          await notificationService.sendBatch(freshUser);
+        }
+      };
+
       if (url.includes('/folders/')) {
         await progressCallback('📂 Detecting Folder...');
         const result = await quizletService.scrapeFolder(url, user.id, progressCallback);
@@ -96,6 +110,11 @@ bot.command('add', async (ctx) => {
             msg += `\n⚠️ Failed to download ${result.failedCount} sets.`;
           }
           await progressCallback(msg);
+
+          // Send first word batch if any new words were added
+          if (result.totalWords && result.totalWords > 0) {
+            await sendFirstBatch();
+          }
         } else {
           await progressCallback(`❌ Failed to sync folder: ${result.error}`);
         }
@@ -107,6 +126,11 @@ bot.command('add', async (ctx) => {
           const message = (result as any).message;
           if (message) msg += `\n(${message})`;
           await progressCallback(msg);
+
+          // Send first word batch if new words were actually added (not "Already exists")
+          if (result.count && result.count > 0 && !message) {
+            await sendFirstBatch();
+          }
         } else {
           const errorMsg = 'error' in result ? result.error : "Unknown error";
           await progressCallback(`❌ Failed to sync: ${errorMsg}`);

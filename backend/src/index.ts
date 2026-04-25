@@ -4,6 +4,7 @@ import { streamText } from 'hono/streaming'
 import { prisma } from './prisma'
 import { validateInitData, getTelegramUserId } from './telegram-auth'
 import { scrapeSet, scrapeFolder } from './quizlet'
+import { sendWordBatch } from './send-words'
 
 type TVariables = {
   telegramId: bigint
@@ -151,6 +152,11 @@ app.post('/api/scrape', async (c) => {
           await stream.write(msg + '\n\n')
         })
         await stream.write(`[RESULT] ${JSON.stringify(result)}\n\n`)
+
+        // Send first word batch after successful folder add
+        if (result.success && result.totalWords && result.totalWords > 0) {
+          sendWordBatch(dbUserId).catch((e) => console.error('[scrape] sendWordBatch error:', e))
+        }
       } catch (error: any) {
         await stream.write(`[ERROR] ${error.message || 'Scraping failed'}\n\n`)
       }
@@ -159,6 +165,12 @@ app.post('/api/scrape', async (c) => {
 
   try {
     const result = await scrapeSet(url, dbUserId)
+
+    // Send first word batch after successful set add (not "Already exists")
+    if (result.success && result.count > 0 && !('message' in result && result.message)) {
+      sendWordBatch(dbUserId).catch((e) => console.error('[scrape] sendWordBatch error:', e))
+    }
+
     return c.json(result)
   } catch (error: any) {
     console.error('[/api/scrape] Error:', error)
