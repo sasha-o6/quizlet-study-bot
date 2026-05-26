@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import WebApp from '@twa-dev/sdk';
 import './index.css';
-import { Settings, Home, PlusCircle, Loader2 } from 'lucide-preact';
+import { Settings, Home, PlusCircle, Loader2, List, CheckCircle2, Circle, ChevronDown } from 'lucide-preact';
 
 // API_URL is now handled via same-domain reverse proxy. Use relative `/api/` urls.
 interface IUserData {
@@ -21,6 +21,20 @@ interface IUserData {
   };
 }
 
+interface IWord {
+  id: number;
+  term: string;
+  definition: string;
+  isLearned: boolean;
+}
+
+interface ISet {
+  id: number;
+  title: string;
+  createdAt: string;
+  words: IWord[];
+}
+
 function getAuthHeaders(): Record<string, string> {
   return {
     'X-Telegram-Init-Data': WebApp.initData || '',
@@ -29,13 +43,18 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'add'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'add' | 'words'>('home');
   const [userData, setUserData] = useState<IUserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
   const [quietDays, setQuietDays] = useState<number[]>([]);
+
+  const [setsData, setSetsData] = useState<ISet[]>([]);
+  const [wordsLoading, setWordsLoading] = useState(false);
+  const [wordsFilter, setWordsFilter] = useState<'all' | 'learned' | 'unlearned'>('all');
+  const [wordsSort, setWordsSort] = useState<'newest' | 'oldest'>('newest');
 
   useEffect(() => {
     WebApp.ready();
@@ -51,9 +70,9 @@ function App() {
     return () => WebApp.offEvent('themeChanged', applyTheme);
   }, []);
 
-  const fetchUserData = async () => {
+  const fetchUserData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await fetch(`/api/user`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -80,6 +99,27 @@ function App() {
   useEffect(() => {
     fetchUserData();
   }, []);
+
+  const fetchSetsWords = async () => {
+    try {
+      setWordsLoading(true);
+      const res = await fetch(`/api/sets/words`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setSetsData(data.sets || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch words data', error);
+    } finally {
+      setWordsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'words' && setsData.length === 0) {
+      fetchSetsWords();
+    }
+  }, [activeTab]);
 
   const handleSaveSettings = async (e: Event) => {
     e.preventDefault();
@@ -180,6 +220,30 @@ function App() {
     }
   };
 
+  const toggleLearned = async (wordId: number) => {
+    // Optimistic UI update
+    setSetsData((prevSets) =>
+      prevSets.map((set) => ({
+        ...set,
+        words: set.words.map((w) => (w.id === wordId ? { ...w, isLearned: !w.isLearned } : w)),
+      })),
+    );
+    try {
+      const res = await fetch(`/api/words/${wordId}/toggle-learned`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        // Revert on error
+        fetchSetsWords();
+      } else {
+        fetchUserData(false); // To update the learned counter on home tab without loading spinner
+      }
+    } catch (error) {
+      fetchSetsWords();
+    }
+  };
+
   const progressPercent = userData
     ? userData.totalWords > 0
       ? Math.round((userData.learnedWords / userData.totalWords) * 100)
@@ -188,11 +252,12 @@ function App() {
 
   return (
     <div className="min-h-screen pb-20">
-      <header className="px-6 py-4 sticky top-0 bg-[var(--color-bg)] z-10 bg-opacity-90 backdrop-blur-md flex justify-between items-center">
+      <header className="px-6 py-4 sticky top-0 bg-[var(--color-bg)] z-30 bg-opacity-90 backdrop-blur-md flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">
           {activeTab === 'home' && 'Your Progress'}
           {activeTab === 'settings' && 'Settings'}
           {activeTab === 'add' && 'Add Set or Folder'}
+          {activeTab === 'words' && 'All Words'}
         </h1>
 
         <a href="https://send.monobank.ua/jar/Ab1gRZPzfc" class={'btn-primary'}>
@@ -318,6 +383,106 @@ function App() {
           </div>
         )}
 
+        {/* ── WORDS TAB ── */}
+        {!loading && activeTab === 'words' && (
+          <div className="flex flex-col gap-4">
+            {/* Filter & Sort Controls */}
+            <div className="card p-4 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Filter</span>
+                <select
+                  value={wordsFilter}
+                  onChange={(e) => setWordsFilter((e.target as HTMLSelectElement).value as any)}
+                  className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-sm outline-none cursor-pointer">
+                  <option value="all">All Words</option>
+                  <option value="unlearned">Unlearned</option>
+                  <option value="learned">Learned</option>
+                </select>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Sort Sets</span>
+                <select
+                  value={wordsSort}
+                  onChange={(e) => setWordsSort((e.target as HTMLSelectElement).value as any)}
+                  className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-sm outline-none cursor-pointer">
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Sets List */}
+            {wordsLoading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="animate-spin text-[var(--color-primary)]" size={32} />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {setsData
+                  .slice()
+                  .sort((a, b) => {
+                    const tA = new Date(a.createdAt).getTime();
+                    const tB = new Date(b.createdAt).getTime();
+                    return wordsSort === 'newest' ? tB - tA : tA - tB;
+                  })
+                  .map((set) => {
+                    const filteredWords = set.words.filter((w) => {
+                      if (wordsFilter === 'learned') return w.isLearned;
+                      if (wordsFilter === 'unlearned') return !w.isLearned;
+                      return true;
+                    });
+
+                    if (filteredWords.length === 0) return null;
+
+                    return (
+                      <details key={set.id} open className="card p-0 group">
+                        <summary className="sticky top-[77px] bg-[var(--color-card)] z-10 p-3 font-semibold text-sm cursor-pointer border-b border-transparent group-open:border-[var(--color-border)] outline-none list-none [&::-webkit-details-marker]:hidden rounded-2xl group-open:rounded-b-none">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2 truncate pr-4">
+                              <ChevronDown size={18} className="text-[var(--color-gray)] transition-transform duration-200 group-open:rotate-180 flex-shrink-0" />
+                              <span className="truncate">{set.title}</span>
+                            </div>
+                            <span className="text-[var(--color-gray)] text-xs whitespace-nowrap">
+                              {filteredWords.length} words
+                            </span>
+                          </div>
+                        </summary>
+                        <div className="p-3 space-y-2">
+                          {filteredWords.map((word) => (
+                            <div
+                              key={word.id}
+                              onClick={() => toggleLearned(word.id)}
+                              className={`flex items-start gap-3 p-2 rounded-xl transition-colors cursor-pointer ${
+                                word.isLearned
+                                  ? 'bg-transparent text-[#72798e]'
+                                  : 'bg-[var(--color-bg)] text-[var(--color-text)]'
+                              }`}>
+                              <button className="mt-0.5 flex-shrink-0">
+                                {word.isLearned ? (
+                                  <CheckCircle2 size={20} className="text-[var(--color-primary)]" />
+                                ) : (
+                                  <Circle size={20} className="text-[var(--color-gray)] opacity-50" />
+                                )}
+                              </button>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-sm">{word.term}</span>
+                                <span className="text-xs opacity-80 mt-0.5">{word.definition}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    );
+                  })}
+
+                {setsData.length === 0 && !wordsLoading && (
+                  <div className="text-center py-10 text-[var(--color-gray)]">No words found. Add some sets!</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── SETTINGS TAB ── */}
         {!loading && activeTab === 'settings' && userData && (
           <div className="card">
@@ -420,7 +585,7 @@ function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-card)] border-t border-[var(--color-border)] flex justify-between items-center px-6 pt-2 pb-4">
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-card)] border-t border-[var(--color-border)] flex justify-between items-center px-6 pt-2 pb-4 z-40">
         <button
           onClick={() => setActiveTab('home')}
           className={`flex flex-col items-center justify-center w-16 h-full ${activeTab === 'home' ? 'text-[var(--color-primary)]' : 'text-[var(--color-gray)]'}`}>
@@ -432,6 +597,12 @@ function App() {
           className={`flex flex-col items-center justify-center w-16 h-full ${activeTab === 'add' ? 'text-[var(--color-primary)]' : 'text-[var(--color-gray)]'}`}>
           <PlusCircle size={24} />
           <span className="text-[10px] font-medium mt-1">Add</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('words')}
+          className={`flex flex-col items-center justify-center w-16 h-full ${activeTab === 'words' ? 'text-[var(--color-primary)]' : 'text-[var(--color-gray)]'}`}>
+          <List size={24} />
+          <span className="text-[10px] font-medium mt-1">Words</span>
         </button>
         <button
           onClick={() => setActiveTab('settings')}

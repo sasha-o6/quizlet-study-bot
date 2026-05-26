@@ -133,6 +133,102 @@ app.patch('/api/user/settings', async (c) => {
   }
 })
 
+app.get('/api/sets/words', async (c) => {
+  const dbUserId = c.get('dbUserId')
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: dbUserId },
+      include: {
+        sets: {
+          include: {
+            words: {
+              include: {
+                reviews: {
+                  where: { userId: dbUserId }
+                }
+              }
+            }
+          }
+        },
+        savedSets: {
+          include: {
+            words: {
+              include: {
+                reviews: {
+                  where: { userId: dbUserId }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!user) return c.json({ error: 'User not found' }, 404)
+
+    const allUserSets = [...user.sets, ...user.savedSets]
+    const uniqueSetsMap = new Map()
+    allUserSets.forEach((s) => uniqueSetsMap.set(s.id, s))
+    const userSets = Array.from(uniqueSetsMap.values())
+
+    const result = userSets.map(set => ({
+      id: set.id,
+      title: set.title,
+      createdAt: set.createdAt,
+      words: set.words.map(w => ({
+        id: w.id,
+        term: w.term,
+        definition: w.definition,
+        isLearned: w.reviews.length > 0 ? w.reviews[0].isLearned : false
+      }))
+    }))
+
+    return c.json({ sets: result })
+  } catch (error) {
+    console.error(error)
+    return c.json({ error: 'Internal Server Error' }, 500)
+  }
+})
+
+app.patch('/api/words/:id/toggle-learned', async (c) => {
+  const dbUserId = c.get('dbUserId')
+  const wordId = parseInt(c.req.param('id'), 10)
+
+  if (isNaN(wordId)) return c.json({ error: 'Invalid word ID' }, 400)
+
+  try {
+    let review = await prisma.wordReview.findUnique({
+      where: {
+        userId_wordId: {
+          userId: dbUserId,
+          wordId
+        }
+      }
+    })
+
+    if (review) {
+      review = await prisma.wordReview.update({
+        where: { id: review.id },
+        data: { isLearned: !review.isLearned }
+      })
+    } else {
+      review = await prisma.wordReview.create({
+        data: {
+          userId: dbUserId,
+          wordId,
+          isLearned: true
+        }
+      })
+    }
+
+    return c.json({ success: true, isLearned: review.isLearned })
+  } catch (error) {
+    console.error(error)
+    return c.json({ error: 'Internal Server Error' }, 500)
+  }
+})
+
 app.post('/api/scrape', async (c) => {
   const dbUserId = c.get('dbUserId')
   const { url } = await c.req.json()
