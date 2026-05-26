@@ -70,17 +70,27 @@ graph TD
 - **Responsibility:**
   - Provides a beautiful, glassmorphism-inspired UI designed to match Quizlet's aesthetics.
   - Automatically adapts to the user's Telegram theme (Dark/Light mode).
-  - Displays progress rings, statistics, and a settings dashboard.
+  - Displays progress rings, statistics, and settings dashboard.
   - Form to add new Quizlet sets.
+  - **Words Tab (All Words):** A dedicated section allowing users to list all terms from their added and saved sets. Provides filtering (All, Learned, Unlearned), sorting of sets (Newest First, Oldest First), and instant inline toggle to mark words as learned/unlearned with optimistic UI updates.
+  - **Donation Support:** Clean header integration button leading to Monobank.
 - **Serving:** Built as static files and served using an **Nginx** reverse proxy. Nginx also proxies all requests starting with `/api/` directly to the `backend` container, allowing both to live on **one domain**.
 
 ### 3. `backend` (API & Scraper)
 - **Tech Stack:** Bun, Hono, Prisma, Cheerio, TypeScript.
 - **Responsibility:**
-  - Serves as the API for the Frontend Mini App.
+  - Serves as the Hono-based API for the Frontend Mini App.
   - Handles Telegram Mini App Authentication (verifying `X-Telegram-Init-Data` via HMAC-SHA256).
-  - Executes the heavy lifting of scraping Quizlet links (`/api/scrape`) via BrightData.
+  - Executes scraping of Quizlet sets and folders (`/api/scrape`) via the **BrightData Scraper API** (bypassing Cloudflare protections).
   - Parses Quizlet's HTML/JSON-LD data to extract terms and definitions.
+  - Exposes endpoints to query and toggle word review states.
+
+#### Key API Endpoints:
+- `GET /api/user` — Retrieves user statistics (total sets, total words, learned words) and settings.
+- `PATCH /api/user/settings` — Updates user notification preferences (frequency, batch size, quiet hours/days, timezone).
+- `GET /api/sets/words` — Retrieves a list of all user sets and the terms they contain (with learned/unlearned state).
+- `PATCH /api/words/:id/toggle-learned` — Toggles the learned state of a specific word (creates/updates `WordReview` table).
+- `POST /api/scrape` — Triggers scraping for a given Quizlet set or folder URL (streamed progress response for folders).
 
 ### 4. `cloudflared` (Cloudflare Tunnel)
 - **Tech Stack:** Official `cloudflare/cloudflared` Docker image.
@@ -120,8 +130,9 @@ Edit the `.env` file in the root directory.
 2. Start an `ngrok` tunnel to expose your local frontend: `ngrok http 5173`.
 3. Update `WEBAPP_URL` in `.env` with your dynamic ngrok HTTPS link.
 4. Set your development `BOT_TOKEN` in `.env`.
-5. Run `docker compose up --build -d`.
-6. Open your Dev Bot in Telegram and press "Start".
+5. Fill in the BrightData parameters (`BRIGHTDATA_API_ZONE`, `BRIGHTDATA_API_KEY`, `BRIGHTDATA_API_URL`).
+6. Run `docker compose up --build -d`.
+7. Open your Dev Bot in Telegram and press "Start".
 
 #### For Production (e.g., Raspberry Pi 5 + Ubuntu Server):
 We run Cloudflare Tunnel natively **inside** Docker. You don't need to install `cloudflared` on your host OS.
@@ -131,7 +142,8 @@ We run Cloudflare Tunnel natively **inside** Docker. You don't need to install `
 4. Go to Cloudflare Zero Trust Dashboard -> Tunnels, create a new tunnel, and copy the provided Tunnel Token.
 5. Set `CLOUDFLARED_TOKEN` in your `.env`.
 6. Configure the tunnel routing in Cloudflare Dashboard to point to `http://frontend:80`.
-7. Setup the infrastructure: `docker compose up --build -d`.
+7. Fill in the BrightData parameters.
+8. Setup the infrastructure: `docker compose up --build -d`.
 
 ### Why Nginx?
 We bundle Nginx directly inside the `frontend` container to solve Cross-Origin Resource Sharing (CORS) and complexity. Because Nginx listens on port `80` (mapped to `5173` locally) and routes `/api/*` to the Bun backend (`http://backend:3000`), the frontend app makes relative API requests (`fetch('/api/user')`), eliminating the need for complex multi-domain SSL certificates or dynamic `VITE_API_URL` build arguments.
@@ -145,3 +157,18 @@ The backend securely authenticates users visiting the Mini App without requiring
 2. The Preact frontend sends this signature via the `X-Telegram-Init-Data` HTTP header.
 3. The Bun Hono backend validates this signature against your `BOT_TOKEN` using `HMAC-SHA256`.
 4. Once verified, the backend extracts the `telegramId`, finds the user in PostgreSQL, and serves their protected data securely.
+
+---
+
+## 🗃 Database Backup & Restore
+
+The project includes pre-configured utility scripts in the root `package.json` to handle PostgreSQL data backup and recovery:
+
+- **Backup database**: Generates a database dump in `backups/latest.sql`:
+  ```bash
+  npm run db:backup
+  ```
+- **Restore database**: Restores a database dump from `backups/latest.sql`:
+  ```bash
+  npm run db:restore
+  ```
