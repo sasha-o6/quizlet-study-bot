@@ -1,6 +1,7 @@
 node_modules
 dist
 .env
+.env.dev
 pg_data
 postgres_data/
 npm-debug.log
